@@ -5,6 +5,9 @@ from models import User
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 from database import db
+from models import User, Property, Payment, Issue, UserType, PropertyStatus, PaymentStatus, IssueStatus, IssueType
+from datetime import datetime
+from decimal import Decimal
 
 app = Flask(__name__)
 
