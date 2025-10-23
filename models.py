@@ -2,6 +2,8 @@ from database import db
 from datetime import datetime
 from enum import Enum
 from sqlalchemy import Numeric
+from sqlalchemy_serializer import SerializerMixin
+
 
 
 class UserType(Enum):
@@ -32,7 +34,7 @@ class IssueType(Enum):
     DISPUTE = "dispute"
 
 
-class User(db.Model):
+class User(db.Model, SerializerMixin):
     __tablename__ = 'users'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -57,6 +59,8 @@ class User(db.Model):
                                         lazy=True)
     payments = db.relationship('Payment', backref='user', lazy=True)
     issues = db.relationship('Issue', backref='reporter', lazy=True)
+
+    serialize_rules = ('-password_hash',)
 
 
 class Property(db.Model):
