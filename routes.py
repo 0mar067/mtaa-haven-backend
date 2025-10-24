@@ -2,7 +2,6 @@ from flask import Blueprint, request, jsonify
 from flask_mail import Message
 from models import Notification, NotificationType, User, Property
 from database import db
-from app import mail
 import logging
 
 api = Blueprint('api', __name__)
@@ -10,11 +9,53 @@ api = Blueprint('api', __name__)
 
 @api.route('/test', methods=['GET'])
 def test():
+    """
+    Test endpoint for API functionality.
+    ---
+    responses:
+      200:
+        description: API is working
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: "API is working"
+    """
     return jsonify({'message': 'API is working'})
 
 
 @api.route('/test', methods=['POST'])
 def test_post():
+    """
+    Test endpoint for POST requests with JSON data.
+    ---
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          example: {"key": "value"}
+    responses:
+      200:
+        description: Data received successfully
+        schema:
+          type: object
+          properties:
+            received:
+              type: object
+            message:
+              type: string
+              example: "Data received successfully"
+      400:
+        description: No JSON data provided or invalid JSON
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+    """
     try:
         data = request.get_json()
         if data is None or data == {}:
@@ -25,6 +66,31 @@ def test_post():
 
 @api.route('/notifications', methods=['GET'])
 def get_notifications():
+    """
+    Get notifications for the user.
+    ---
+    responses:
+      200:
+        description: List of notifications
+        schema:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              title:
+                type: string
+              message:
+                type: string
+              type:
+                type: string
+              is_read:
+                type: boolean
+              created_at:
+                type: string
+                format: date-time
+    """
     # Mock rent reminders - in a real app, this would query based on user and due dates
     mock_notifications = [
         {
@@ -48,6 +114,57 @@ def get_notifications():
 
 @api.route('/notifications', methods=['POST'])
 def create_notification():
+    """
+    Create a new notification.
+    ---
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            title:
+              type: string
+              example: "Rent Reminder"
+            message:
+              type: string
+              example: "Your rent is due soon."
+            user_id:
+              type: integer
+              example: 1
+            property_id:
+              type: integer
+            email:
+              type: string
+              format: email
+              example: "tenant@example.com"
+    responses:
+      201:
+        description: Notification created successfully
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: "Notification created and email sent (mock)"
+            notification_id:
+              type: integer
+      400:
+        description: No data provided
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+      500:
+        description: Internal server error
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+    """
     try:
         data = request.get_json()
         if not data:
@@ -83,9 +200,3 @@ def create_notification():
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
-        return jsonify({
-            'received': data,
-            'message': 'Data received successfully'
-        })
-    except Exception:
-        return jsonify({'error': 'Invalid JSON data'}), 400
