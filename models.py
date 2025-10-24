@@ -38,8 +38,6 @@ class NotificationType(Enum):
     PAYMENT_DUE = "payment_due"
     GENERAL = "general"
 
-class User(db.Model):
-
 class User(db.Model, SerializerMixin):
     __tablename__ = 'users'
 
@@ -121,6 +119,16 @@ class Issue(db.Model):
     description = db.Column(db.Text, nullable=False)
     issue_type = db.Column(db.Enum(IssueType), nullable=False)
     status = db.Column(db.Enum(IssueStatus), default=IssueStatus.OPEN)
+    priority = db.Column(db.String(20), default='medium')
+    reporter_id = db.Column(db.Integer,
+                            db.ForeignKey('users.id'),
+                            nullable=False)
+    property_id = db.Column(db.Integer,
+                            db.ForeignKey('properties.id'),
+                            nullable=False)
+    resolved_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 class Notification(db.Model):
     __tablename__ = 'notifications'
 
@@ -137,13 +145,3 @@ class Notification(db.Model):
     # Relationships
     user = db.relationship('User', backref='notifications', lazy=True)
     property = db.relationship('Property', backref='notifications', lazy=True)
-    priority = db.Column(db.String(20), default='medium')
-    reporter_id = db.Column(db.Integer,
-                            db.ForeignKey('users.id'),
-                            nullable=False)
-    property_id = db.Column(db.Integer,
-                            db.ForeignKey('properties.id'),
-                            nullable=False)
-    resolved_at = db.Column(db.DateTime)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
