@@ -3,3 +3,5 @@ Flask-SQLAlchemy==3.0.5
 Flask-Migrate==4.0.5
 python-dotenv==1.0.0
 gunicorn==21.2.0
+
+Flask-Mail==0.9.1

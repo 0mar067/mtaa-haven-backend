@@ -1,10 +1,13 @@
 from flask import Flask, request, jsonify
 from flask_migrate import Migrate
+from flask_mail import Mail
 import os
 from models import User
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 from database import db
+from models import User, Property, Payment, Issue, Notification
+from routes import api
 from models import User, Property, Payment, Issue, UserType, PropertyStatus, PaymentStatus, IssueStatus, IssueType
 from datetime import datetime
 from decimal import Decimal
@@ -19,9 +22,21 @@ app.config['SQLALCHEMY_DATABASE_URI'] = (
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'dev-secret-key'
 
+# Email configuration (mock for now)
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = 'your-email@gmail.com'  # Replace with actual email
+app.config['MAIL_PASSWORD'] = 'your-password'  # Replace with actual password
+app.config['MAIL_DEFAULT_SENDER'] = 'your-email@gmail.com'
+
 # Initialize extensions
 db.init_app(app)
 migrate = Migrate(app, db)
+mail = Mail(app)
+
+# Register blueprints
+app.register_blueprint(api, url_prefix='/api')
 
 
 @app.route('/')

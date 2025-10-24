@@ -33,6 +33,12 @@ class IssueType(Enum):
     MAINTENANCE = "maintenance"
     DISPUTE = "dispute"
 
+class NotificationType(Enum):
+    RENT_REMINDER = "rent_reminder"
+    PAYMENT_DUE = "payment_due"
+    GENERAL = "general"
+
+class User(db.Model):
 
 class User(db.Model, SerializerMixin):
     __tablename__ = 'users'
@@ -115,6 +121,22 @@ class Issue(db.Model):
     description = db.Column(db.Text, nullable=False)
     issue_type = db.Column(db.Enum(IssueType), nullable=False)
     status = db.Column(db.Enum(IssueStatus), default=IssueStatus.OPEN)
+class Notification(db.Model):
+    __tablename__ = 'notifications'
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    notification_type = db.Column(db.Enum(NotificationType), nullable=False)
+    is_read = db.Column(db.Boolean, default=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    property_id = db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user = db.relationship('User', backref='notifications', lazy=True)
+    property = db.relationship('Property', backref='notifications', lazy=True)
     priority = db.Column(db.String(20), default='medium')
     reporter_id = db.Column(db.Integer,
                             db.ForeignKey('users.id'),
