@@ -7,9 +7,11 @@ import logging
 
 api = Blueprint('api', __name__)
 
+
 @api.route('/test', methods=['GET'])
 def test():
     return jsonify({'message': 'API is working'})
+
 
 @api.route('/test', methods=['POST'])
 def test_post():
@@ -81,3 +83,9 @@ def create_notification():
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+        return jsonify({
+            'received': data,
+            'message': 'Data received successfully'
+        })
+    except Exception:
+        return jsonify({'error': 'Invalid JSON data'}), 400
