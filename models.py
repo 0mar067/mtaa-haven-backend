@@ -37,6 +37,7 @@ class NotificationType(Enum):
     RENT_REMINDER = "rent_reminder"
     PAYMENT_DUE = "payment_due"
     GENERAL = "general"
+    ISSUE_UPDATE = "issue_update"
 
 
 class BookingStatus(Enum):
@@ -85,6 +86,7 @@ class Property(db.Model):
     bedrooms = db.Column(db.Integer, nullable=False)
     bathrooms = db.Column(db.Integer, nullable=False)
     area_sqft = db.Column(db.Integer)
+    type = db.Column(db.String(50), nullable=True)  # e.g., "hostel", "airbnb", "apartment"
     status = db.Column(db.Enum(PropertyStatus), default=PropertyStatus.AVAILABLE)
     landlord_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     tenant_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)

@@ -238,11 +238,28 @@ def token_required(f):
 
 
 @api.route('/properties', methods=['GET'])
-@token_required
-def get_properties(current_user):
+def get_properties():
     """
-    Get all properties for the current user (landlord or tenant).
+    Get properties with optional filtering and search.
+    Supports public search (no auth required) and authenticated user-specific filtering.
     ---
+    parameters:
+      - name: location
+        in: query
+        type: string
+        description: Filter by city (case-insensitive)
+      - name: price_min
+        in: query
+        type: number
+        description: Minimum rent amount
+      - name: price_max
+        in: query
+        type: number
+        description: Maximum rent amount
+      - name: type
+        in: query
+        type: string
+        description: Filter by property type (e.g., hostel, airbnb, apartment)
     security:
       - Bearer: []
     responses:
@@ -269,36 +286,112 @@ def get_properties(current_user):
                 type: integer
               bathrooms:
                 type: integer
+              type:
+                type: string
               status:
                 type: string
               landlord_id:
                 type: integer
               tenant_id:
                 type: integer
+      404:
+        description: No properties found matching the criteria
     """
     try:
-        if current_user.user_type == UserType.LANDLORD:
-            properties = Property.query.filter_by(landlord_id=current_user.id).all()
-        else:
-            properties = Property.query.filter_by(tenant_id=current_user.id).all()
+        # Check for authentication token
+        token = request.headers.get('Authorization')
+        current_user = None
+        if token:
+            if token.startswith('Bearer '):
+                token = token.split(' ')[1]
+            try:
+                import jwt
+                from flask import current_app
+                data = jwt.decode(token, current_app.config['JWT_SECRET_KEY'], algorithms=['HS256'])
+                current_user = User.query.get(data['user_id'])
+            except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, KeyError):
+                pass  # Treat as unauthenticated
 
-        return jsonify([{
-            'id': p.id,
-            'title': p.title,
-            'description': p.description,
-            'address': p.address,
-            'city': p.city,
-            'rent_amount': float(p.rent_amount),
-            'bedrooms': p.bedrooms,
-            'bathrooms': p.bathrooms,
-            'area_sqft': p.area_sqft,
-            'status': p.status.value,
-            'landlord_id': p.landlord_id,
-            'tenant_id': p.tenant_id,
-            'created_at': p.created_at.isoformat(),
-            'updated_at': p.updated_at.isoformat()
-        } for p in properties])
+        # Build base query
+        query = Property.query
+
+        # Apply user-specific filtering if authenticated
+        if current_user:
+            if current_user.user_type == UserType.LANDLORD:
+                query = query.filter_by(landlord_id=current_user.id)
+            else:
+                query = query.filter_by(tenant_id=current_user.id)
+
+        # Apply search filters
+        location = request.args.get('location')
+        price_min = request.args.get('price_min')
+        price_max = request.args.get('price_max')
+        property_type = request.args.get('type')
+
+        filters_applied = []
+
+        if location:
+            query = query.filter(Property.city.ilike(f'%{location}%'))
+            filters_applied.append(f"location={location}")
+
+        if price_min:
+            try:
+                min_price = float(price_min)
+                query = query.filter(Property.rent_amount >= min_price)
+                filters_applied.append(f"price_min={price_min}")
+            except ValueError:
+                return jsonify({'error': 'Invalid price_min value'}), 400
+
+        if price_max:
+            try:
+                max_price = float(price_max)
+                query = query.filter(Property.rent_amount <= max_price)
+                filters_applied.append(f"price_max={price_max}")
+            except ValueError:
+                return jsonify({'error': 'Invalid price_max value'}), 400
+
+        if property_type:
+            query = query.filter(Property.type.ilike(f'%{property_type}%'))
+            filters_applied.append(f"type={property_type}")
+
+        # Log search query
+        if filters_applied:
+            logging.info(f"Property search query: {'&'.join(filters_applied)}")
+        else:
+            logging.info("Property search query: no filters applied")
+
+        # Execute query
+        properties = query.all()
+
+        if not properties:
+            return jsonify({'message': 'No properties found matching the criteria'}), 404
+
+        # Format response
+        result = []
+        for p in properties:
+            prop_dict = {
+                'id': p.id,
+                'title': p.title,
+                'description': p.description,
+                'address': p.address,
+                'city': p.city,
+                'rent_amount': float(p.rent_amount),
+                'bedrooms': p.bedrooms,
+                'bathrooms': p.bathrooms,
+                'area_sqft': p.area_sqft,
+                'type': p.type,
+                'status': p.status.value,
+                'landlord_id': p.landlord_id,
+                'tenant_id': p.tenant_id,
+                'created_at': p.created_at.isoformat(),
+                'updated_at': p.updated_at.isoformat()
+            }
+            result.append(prop_dict)
+
+        return jsonify(result)
+
     except Exception as e:
+        logging.error(f"Error in get_properties: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -340,6 +433,7 @@ def get_property(current_user, property_id):
             'bedrooms': property_obj.bedrooms,
             'bathrooms': property_obj.bathrooms,
             'area_sqft': property_obj.area_sqft,
+            'type': property_obj.type,
             'status': property_obj.status.value,
             'landlord_id': property_obj.landlord_id,
             'tenant_id': property_obj.tenant_id,
@@ -388,6 +482,8 @@ def create_property(current_user):
               type: integer
             area_sqft:
               type: integer
+            type:
+              type: string
     responses:
       201:
         description: Property created successfully
@@ -418,6 +514,7 @@ def create_property(current_user):
             bedrooms=data['bedrooms'],
             bathrooms=data['bathrooms'],
             area_sqft=data.get('area_sqft'),
+            type=data.get('type'),
             landlord_id=current_user.id,
             status=PropertyStatus.AVAILABLE
         )
@@ -438,6 +535,7 @@ def create_property(current_user):
                 'bedrooms': property_obj.bedrooms,
                 'bathrooms': property_obj.bathrooms,
                 'area_sqft': property_obj.area_sqft,
+                'type': property_obj.type,
                 'status': property_obj.status.value,
                 'landlord_id': property_obj.landlord_id,
                 'tenant_id': property_obj.tenant_id,
@@ -485,6 +583,8 @@ def update_property(current_user, property_id):
               type: integer
             area_sqft:
               type: integer
+            type:
+              type: string
             status:
               type: string
               enum: [AVAILABLE, OCCUPIED, MAINTENANCE]
@@ -507,7 +607,7 @@ def update_property(current_user, property_id):
             return jsonify({'error': 'No data provided'}), 400
 
         # Update fields
-        for field in ['title', 'description', 'address', 'city', 'bedrooms', 'bathrooms', 'area_sqft']:
+        for field in ['title', 'description', 'address', 'city', 'bedrooms', 'bathrooms', 'area_sqft', 'type']:
             if field in data:
                 setattr(property_obj, field, data[field])
 
@@ -534,6 +634,7 @@ def update_property(current_user, property_id):
                 'bedrooms': property_obj.bedrooms,
                 'bathrooms': property_obj.bathrooms,
                 'area_sqft': property_obj.area_sqft,
+                'type': property_obj.type,
                 'status': property_obj.status.value,
                 'landlord_id': property_obj.landlord_id,
                 'tenant_id': property_obj.tenant_id,
@@ -661,17 +762,46 @@ def get_payment(current_user, payment_id):
     responses:
       200:
         description: Payment details
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: "success"
+            data:
+              type: object
+      403:
+        description: Unauthorized access
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: "error"
+            message:
+              type: string
       404:
         description: Payment not found
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: "error"
+            message:
+              type: string
     """
     try:
         payment = Payment.query.get_or_404(payment_id)
 
         # Check if user has access to this payment
         if payment.user_id != current_user.id:
-            return jsonify({'error': 'Unauthorized access to payment'}), 403
+            return jsonify({'status': 'error', 'message': 'Unauthorized access to payment'}), 403
 
-        return jsonify({
+        # Get associated booking info if exists
+        booking = Booking.query.filter_by(property_id=payment.property_id, tenant_id=payment.user_id).first()
+
+        payment_data = {
             'id': payment.id,
             'amount': float(payment.amount),
             'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
@@ -684,9 +814,20 @@ def get_payment(current_user, payment_id):
             'property_id': payment.property_id,
             'created_at': payment.created_at.isoformat(),
             'updated_at': payment.updated_at.isoformat()
+        }
+
+        if booking:
+            payment_data['booking_id'] = booking.id
+            payment_data['booking_status'] = booking.status.value
+
+        return jsonify({
+            'status': 'success',
+            'data': payment_data
         })
+
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"Error retrieving payment {payment_id}: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 @api.route('/payments', methods=['POST'])
@@ -704,93 +845,170 @@ def create_payment(current_user):
         schema:
           type: object
           required:
+            - booking_id
             - amount
-            - due_date
-            - property_id
+            - payment_method
           properties:
+            booking_id:
+              type: integer
             amount:
               type: number
-            due_date:
-              type: string
-              format: date
             payment_method:
               type: string
-            transaction_id:
-              type: string
+              enum: [mpesa, card, bank_transfer]
             notes:
               type: string
-            property_id:
-              type: integer
     responses:
       201:
-        description: Payment created successfully
+        description: Payment created and confirmed successfully
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: "success"
+            message:
+              type: string
+            data:
+              type: object
       400:
         description: Missing required fields or invalid data
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: "error"
+            message:
+              type: string
+      403:
+        description: Unauthorized access
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: "error"
+            message:
+              type: string
       404:
-        description: Property not found
+        description: Booking not found
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: "error"
+            message:
+              type: string
     """
     try:
         data = request.get_json()
         if not data:
-            return jsonify({'error': 'No data provided'}), 400
+            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
 
-        required_fields = ['amount', 'due_date', 'property_id']
+        required_fields = ['booking_id', 'amount', 'payment_method']
         for field in required_fields:
             if field not in data:
-                return jsonify({'error': f'Missing required field: {field}'}), 400
+                return jsonify({'status': 'error', 'message': f'Missing required field: {field}'}), 400
 
-        # Validate property exists and user has access
-        property_obj = Property.query.filter_by(id=data['property_id']).first()
+        booking_id = data['booking_id']
+        amount = data['amount']
+        payment_method = data['payment_method']
+
+        # Validate booking exists and user has access
+        booking = Booking.query.filter_by(id=booking_id).first()
+        if not booking:
+            return jsonify({'status': 'error', 'message': 'Booking not found'}), 404
+
+        # Check if user is authorized (tenant of the booking or landlord of the property)
+        property_obj = Property.query.filter_by(id=booking.property_id).first()
         if not property_obj:
-            return jsonify({'error': 'Property not found'}), 404
+            return jsonify({'status': 'error', 'message': 'Associated property not found'}), 404
 
-        if current_user.user_type == UserType.TENANT and property_obj.tenant_id != current_user.id:
-            return jsonify({'error': 'Unauthorized access to property'}), 403
+        if current_user.user_type == UserType.TENANT and booking.tenant_id != current_user.id:
+            return jsonify({'status': 'error', 'message': 'Unauthorized access to booking'}), 403
         if current_user.user_type == UserType.LANDLORD and property_obj.landlord_id != current_user.id:
-            return jsonify({'error': 'Unauthorized access to property'}), 403
+            return jsonify({'status': 'error', 'message': 'Unauthorized access to booking'}), 403
 
-        # Parse due date
-        try:
-            due_date = datetime.strptime(data['due_date'], '%Y-%m-%d')
-        except ValueError:
-            return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+        # Validate payment amount (should match property rent or be reasonable)
+        if amount <= 0:
+            return jsonify({'status': 'error', 'message': 'Payment amount must be positive'}), 400
 
+        # Generate transaction ID
+        import uuid
+        transaction_id = str(uuid.uuid4())[:8].upper()
+
+        # Create payment with current timestamp as payment_date
         payment = Payment(
-            amount=Decimal(str(data['amount'])),
-            due_date=due_date,
-            payment_method=data.get('payment_method'),
-            transaction_id=data.get('transaction_id'),
+            amount=Decimal(str(amount)),
+            payment_date=datetime.utcnow(),
+            due_date=booking.end_date,  # Use booking end date as due date
+            payment_method=payment_method,
+            transaction_id=transaction_id,
             notes=data.get('notes'),
             user_id=current_user.id,
-            property_id=data['property_id'],
+            property_id=booking.property_id,
             status=PaymentStatus.PENDING
         )
 
         db.session.add(payment)
         db.session.commit()
 
+        # Mock payment confirmation logic
+        # In a real app, this would integrate with payment gateway webhooks
+        try:
+            # Simulate payment processing delay
+            import time
+            time.sleep(0.1)  # Brief delay to simulate processing
+
+            # Mock confirmation - in real app, this would be done via webhook
+            payment.status = PaymentStatus.COMPLETED
+            db.session.commit()
+
+            logging.info(f"Payment confirmed: transaction_id={transaction_id}, amount={amount}, method={payment_method}")
+
+            # If this is a tenant payment and booking is pending, confirm the booking and update property status
+            if current_user.user_type == UserType.TENANT and booking.status == BookingStatus.PENDING:
+                booking.status = BookingStatus.CONFIRMED
+                property_obj.status = PropertyStatus.OCCUPIED
+                property_obj.tenant_id = current_user.id
+                db.session.commit()
+
+                logging.info(f"Booking confirmed and property status updated: booking_id={booking.id}, property_id={property_obj.id}")
+
+        except Exception as confirm_error:
+            logging.error(f"Payment confirmation failed: {str(confirm_error)}")
+            # Payment stays pending if confirmation fails
+
         return jsonify({
-            'message': 'Payment created successfully',
-            'payment_id': payment.id,
-            'payment': {
-                'id': payment.id,
-                'amount': float(payment.amount),
-                'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
-                'due_date': payment.due_date.isoformat(),
+            'status': 'success',
+            'message': 'Payment processed successfully',
+            'data': {
+                'payment_id': payment.id,
+                'transaction_id': transaction_id,
                 'status': payment.status.value,
-                'payment_method': payment.payment_method,
-                'transaction_id': payment.transaction_id,
-                'notes': payment.notes,
-                'user_id': payment.user_id,
-                'property_id': payment.property_id,
-                'created_at': payment.created_at.isoformat(),
-                'updated_at': payment.updated_at.isoformat()
+                'payment': {
+                    'id': payment.id,
+                    'amount': float(payment.amount),
+                    'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
+                    'due_date': payment.due_date.isoformat(),
+                    'status': payment.status.value,
+                    'payment_method': payment.payment_method,
+                    'transaction_id': payment.transaction_id,
+                    'notes': payment.notes,
+                    'user_id': payment.user_id,
+                    'property_id': payment.property_id,
+                    'created_at': payment.created_at.isoformat(),
+                    'updated_at': payment.updated_at.isoformat()
+                }
             }
         }), 201
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"Error creating payment: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 @api.route('/payments/<int:payment_id>', methods=['PUT'])
@@ -939,7 +1157,7 @@ def delete_payment(current_user, payment_id):
 @token_required
 def get_issues(current_user):
     """
-    Get all issues for the current user.
+    Get all issues for the current user with role-based filtering.
     ---
     security:
       - Bearer: []
@@ -947,34 +1165,45 @@ def get_issues(current_user):
       200:
         description: List of issues
         schema:
-          type: array
-          items:
-            type: object
-            properties:
-              id:
-                type: integer
-              title:
-                type: string
-              description:
-                type: string
-              issue_type:
-                type: string
-              status:
-                type: string
-              priority:
-                type: string
-              reporter_id:
-                type: integer
-              property_id:
-                type: integer
-              resolved_at:
-                type: string
-                format: date-time
+          type: object
+          properties:
+            status:
+              type: string
+              example: "success"
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  title:
+                    type: string
+                  description:
+                    type: string
+                  issue_type:
+                    type: string
+                  status:
+                    type: string
+                  priority:
+                    type: string
+                  reporter_id:
+                    type: integer
+                  property_id:
+                    type: integer
+                  resolved_at:
+                    type: string
+                    format: date-time
     """
     try:
-        issues = Issue.query.filter_by(reporter_id=current_user.id).all()
+        if current_user.user_type == UserType.LANDLORD:
+            # Landlords see all issues for their properties
+            issues = Issue.query.join(Property).filter(Property.landlord_id == current_user.id).all()
+        else:
+            # Tenants see only issues they reported
+            issues = Issue.query.filter_by(reporter_id=current_user.id).all()
 
-        return jsonify([{
+        issues_data = [{
             'id': i.id,
             'title': i.title,
             'description': i.description,
@@ -986,9 +1215,16 @@ def get_issues(current_user):
             'resolved_at': i.resolved_at.isoformat() if i.resolved_at else None,
             'created_at': i.created_at.isoformat(),
             'updated_at': i.updated_at.isoformat()
-        } for i in issues])
+        } for i in issues]
+
+        return jsonify({
+            'status': 'success',
+            'data': issues_data
+        })
+
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"Error retrieving issues for user {current_user.id}: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 @api.route('/issues/<int:issue_id>', methods=['GET'])
@@ -1061,49 +1297,90 @@ def create_issue(current_user):
             issue_type:
               type: string
               enum: [MAINTENANCE, DISPUTE]
-            property_id:
-              type: integer
             priority:
               type: string
+              enum: [low, medium, high]
+              default: medium
+            property_id:
+              type: integer
     responses:
       201:
         description: Issue created successfully
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: "success"
+            message:
+              type: string
+            data:
+              type: object
       400:
         description: Missing required fields or invalid data
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: "error"
+            message:
+              type: string
+      403:
+        description: Unauthorized access - tenant can only report issues for properties they rent
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: "error"
+            message:
+              type: string
       404:
         description: Property not found
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: "error"
+            message:
+              type: string
     """
     try:
         data = request.get_json()
         if not data:
-            return jsonify({'error': 'No data provided'}), 400
+            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
 
         required_fields = ['title', 'description', 'issue_type', 'property_id']
         for field in required_fields:
             if field not in data:
-                return jsonify({'error': f'Missing required field: {field}'}), 400
+                return jsonify({'status': 'error', 'message': f'Missing required field: {field}'}), 400
 
-        # Validate property exists and user has access
+        # Validate property exists
         property_obj = Property.query.filter_by(id=data['property_id']).first()
         if not property_obj:
-            return jsonify({'error': 'Property not found'}), 404
+            return jsonify({'status': 'error', 'message': 'Property not found'}), 404
 
-        if current_user.user_type == UserType.TENANT and property_obj.tenant_id != current_user.id:
-            return jsonify({'error': 'Unauthorized access to property'}), 403
-        if current_user.user_type == UserType.LANDLORD and property_obj.landlord_id != current_user.id:
-            return jsonify({'error': 'Unauthorized access to property'}), 403
+        # For tenants: ensure they can only report issues for properties they rent
+        if current_user.user_type == UserType.TENANT:
+            if property_obj.tenant_id != current_user.id:
+                return jsonify({'status': 'error', 'message': 'You can only report issues for properties you rent'}), 403
+        # For landlords: ensure they can only receive issues for their properties
+        elif current_user.user_type == UserType.LANDLORD:
+            if property_obj.landlord_id != current_user.id:
+                return jsonify({'status': 'error', 'message': 'Unauthorized access to property'}), 403
 
-        # Validate issue type
-        try:
-            issue_type = IssueType(data['issue_type'])
-        except ValueError:
-            return jsonify({'error': 'Invalid issue_type value'}), 400
+        # Validate priority
+        priority = data.get('priority', 'medium')
+        if priority not in ['low', 'medium', 'high']:
+            return jsonify({'status': 'error', 'message': 'Invalid priority. Must be low, medium, or high'}), 400
 
         issue = Issue(
             title=data['title'],
             description=data['description'],
-            issue_type=issue_type,
-            priority=data.get('priority', 'medium'),
+            issue_type=IssueType(data['issue_type']),
+            priority=priority,
             reporter_id=current_user.id,
             property_id=data['property_id'],
             status=IssueStatus.OPEN
@@ -1112,34 +1389,40 @@ def create_issue(current_user):
         db.session.add(issue)
         db.session.commit()
 
+        logging.info(f"Issue created: reporter_id={current_user.id}, property_id={property_obj.id}, issue_id={issue.id}")
+
         return jsonify({
+            'status': 'success',
             'message': 'Issue created successfully',
-            'issue_id': issue.id,
-            'issue': {
-                'id': issue.id,
-                'title': issue.title,
-                'description': issue.description,
-                'issue_type': issue.issue_type.value,
-                'status': issue.status.value,
-                'priority': issue.priority,
-                'reporter_id': issue.reporter_id,
-                'property_id': issue.property_id,
-                'resolved_at': issue.resolved_at.isoformat() if issue.resolved_at else None,
-                'created_at': issue.created_at.isoformat(),
-                'updated_at': issue.updated_at.isoformat()
+            'data': {
+                'issue_id': issue.id,
+                'issue': {
+                    'id': issue.id,
+                    'title': issue.title,
+                    'description': issue.description,
+                    'issue_type': issue.issue_type.value,
+                    'priority': issue.priority,
+                    'status': issue.status.value,
+                    'reporter_id': issue.reporter_id,
+                    'property_id': issue.property_id,
+                    'resolved_at': issue.resolved_at.isoformat() if issue.resolved_at else None,
+                    'created_at': issue.created_at.isoformat(),
+                    'updated_at': issue.updated_at.isoformat()
+                }
             }
         }), 201
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"Error creating issue: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 @api.route('/issues/<int:issue_id>', methods=['PUT'])
 @token_required
 def update_issue(current_user, issue_id):
     """
-    Update an issue.
+    Update an issue status (landlords can update status, tenants can only update their own issues).
     ---
     security:
       - Bearer: []
@@ -1165,23 +1448,56 @@ def update_issue(current_user, issue_id):
               enum: [OPEN, IN_PROGRESS, RESOLVED]
             priority:
               type: string
+              enum: [low, medium, high]
     responses:
       200:
         description: Issue updated successfully
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: "success"
+            message:
+              type: string
+            data:
+              type: object
       403:
         description: Unauthorized access
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: "error"
+            message:
+              type: string
       404:
         description: Issue not found
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: "error"
+            message:
+              type: string
     """
     try:
         issue = Issue.query.get_or_404(issue_id)
 
-        if issue.reporter_id != current_user.id:
-            return jsonify({'error': 'Unauthorized access to issue'}), 403
+        # Check authorization: tenants can only update their own issues, landlords can update issues for their properties
+        if current_user.user_type == UserType.TENANT:
+            if issue.reporter_id != current_user.id:
+                return jsonify({'status': 'error', 'message': 'You can only update your own issues'}), 403
+        else:  # Landlord
+            property_obj = Property.query.filter_by(id=issue.property_id, landlord_id=current_user.id).first()
+            if not property_obj:
+                return jsonify({'status': 'error', 'message': 'Unauthorized access to issue'}), 403
 
         data = request.get_json()
         if not data:
-            return jsonify({'error': 'No data provided'}), 400
+            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
 
         # Update fields
         for field in ['title', 'description', 'priority']:
@@ -1192,38 +1508,55 @@ def update_issue(current_user, issue_id):
             try:
                 issue.issue_type = IssueType(data['issue_type'])
             except ValueError:
-                return jsonify({'error': 'Invalid issue_type value'}), 400
+                return jsonify({'status': 'error', 'message': 'Invalid issue_type value'}), 400
 
         if 'status' in data:
             try:
+                old_status = issue.status
                 issue.status = IssueStatus(data['status'])
-                if issue.status == IssueStatus.RESOLVED and not issue.resolved_at:
+                if issue.status == IssueStatus.RESOLVED and old_status != IssueStatus.RESOLVED:
                     issue.resolved_at = datetime.utcnow()
+                    # Create notification for tenant when issue is resolved
+                    notification = Notification(
+                        title=f'Issue Resolved - {issue.title}',
+                        message=f'Your issue "{issue.title}" has been resolved. Please check the details.',
+                        notification_type=NotificationType.ISSUE_UPDATE,
+                        user_id=issue.reporter_id,
+                        property_id=issue.property_id
+                    )
+                    db.session.add(notification)
+                    logging.info(f"Notification created for issue resolution: issue_id={issue.id}")
             except ValueError:
-                return jsonify({'error': 'Invalid status value'}), 400
+                return jsonify({'status': 'error', 'message': 'Invalid status value'}), 400
 
         db.session.commit()
 
+        logging.info(f"Issue updated: issue_id={issue.id}, updated_by={current_user.id}")
+
         return jsonify({
+            'status': 'success',
             'message': 'Issue updated successfully',
-            'issue': {
-                'id': issue.id,
-                'title': issue.title,
-                'description': issue.description,
-                'issue_type': issue.issue_type.value,
-                'status': issue.status.value,
-                'priority': issue.priority,
-                'reporter_id': issue.reporter_id,
-                'property_id': issue.property_id,
-                'resolved_at': issue.resolved_at.isoformat() if issue.resolved_at else None,
-                'created_at': issue.created_at.isoformat(),
-                'updated_at': issue.updated_at.isoformat()
+            'data': {
+                'issue': {
+                    'id': issue.id,
+                    'title': issue.title,
+                    'description': issue.description,
+                    'issue_type': issue.issue_type.value,
+                    'status': issue.status.value,
+                    'priority': issue.priority,
+                    'reporter_id': issue.reporter_id,
+                    'property_id': issue.property_id,
+                    'resolved_at': issue.resolved_at.isoformat() if issue.resolved_at else None,
+                    'created_at': issue.created_at.isoformat(),
+                    'updated_at': issue.updated_at.isoformat()
+                }
             }
         })
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"Error updating issue {issue_id}: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 @api.route('/issues/<int:issue_id>', methods=['DELETE'])
@@ -1295,39 +1628,64 @@ def create_booking():
         schema:
           type: object
           properties:
+            status:
+              type: string
+              example: "success"
             message:
               type: string
               example: "Booking created successfully"
-            booking_id:
-              type: integer
-            booking:
+            data:
               type: object
+              properties:
+                booking_id:
+                  type: integer
+                booking:
+                  type: object
       400:
         description: Missing required fields or invalid data
         schema:
           type: object
           properties:
-            error:
+            status:
+              type: string
+              example: "error"
+            message:
               type: string
       404:
         description: Tenant or property not found
         schema:
           type: object
           properties:
-            error:
+            status:
+              type: string
+              example: "error"
+            message:
+              type: string
+      409:
+        description: Property already booked or unavailable
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: "error"
+            message:
               type: string
       500:
         description: Internal server error
         schema:
           type: object
           properties:
-            error:
+            status:
+              type: string
+              example: "error"
+            message:
               type: string
     """
     try:
         data = request.get_json()
         if not data:
-            return jsonify({'error': 'No data provided'}), 400
+            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
 
         tenant_id = data.get('tenant_id')
         property_id = data.get('property_id')
@@ -1335,31 +1693,51 @@ def create_booking():
         end_date_str = data.get('end_date')
 
         if not all([tenant_id, property_id, start_date_str, end_date_str]):
-            return jsonify({'error': 'Missing required fields: tenant_id, property_id, start_date, end_date'}), 400
+            return jsonify({'status': 'error', 'message': 'Missing required fields: tenant_id, property_id, start_date, end_date'}), 400
 
         # Validate tenant exists and is a tenant
         tenant = User.query.filter_by(id=tenant_id, user_type=UserType.TENANT).first()
         if not tenant:
-            return jsonify({'error': 'Tenant not found or user is not a tenant'}), 404
+            return jsonify({'status': 'error', 'message': 'Tenant not found or user is not a tenant'}), 404
 
         # Validate property exists and is available
-        property_obj = Property.query.filter_by(id=property_id, status=PropertyStatus.AVAILABLE).first()
+        property_obj = Property.query.filter_by(id=property_id).first()
         if not property_obj:
-            return jsonify({'error': 'Property not found or not available'}), 404
+            return jsonify({'status': 'error', 'message': 'Property not found'}), 404
+
+        if property_obj.status != PropertyStatus.AVAILABLE:
+            return jsonify({'status': 'error', 'message': 'Property is not available for booking'}), 409
+
+        # Check for existing active bookings for this property
+        active_booking = Booking.query.filter_by(
+            property_id=property_id,
+            status=BookingStatus.CONFIRMED
+        ).first()
+        if active_booking:
+            return jsonify({'status': 'error', 'message': 'Property is already booked'}), 409
+
+        # Check for duplicate pending bookings by same tenant
+        pending_booking = Booking.query.filter_by(
+            tenant_id=tenant_id,
+            property_id=property_id,
+            status=BookingStatus.PENDING
+        ).first()
+        if pending_booking:
+            return jsonify({'status': 'error', 'message': 'You already have a pending booking for this property'}), 409
 
         # Parse dates
         try:
             start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
             end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
         except ValueError:
-            return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+            return jsonify({'status': 'error', 'message': 'Invalid date format. Use YYYY-MM-DD'}), 400
 
         # Validate date logic
         if start_date >= end_date:
-            return jsonify({'error': 'Start date must be before end date'}), 400
+            return jsonify({'status': 'error', 'message': 'Start date must be before end date'}), 400
 
         if start_date < datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0):
-            return jsonify({'error': 'Start date cannot be in the past'}), 400
+            return jsonify({'status': 'error', 'message': 'Start date cannot be in the past'}), 400
 
         # Create booking
         booking = Booking(
@@ -1373,12 +1751,18 @@ def create_booking():
         db.session.add(booking)
         db.session.commit()
 
+        logging.info(f"Booking created: tenant_id={tenant_id}, property_id={property_id}, booking_id={booking.id}")
+
         return jsonify({
+            'status': 'success',
             'message': 'Booking created successfully',
-            'booking_id': booking.id,
-            'booking': booking.to_dict()
+            'data': {
+                'booking_id': booking.id,
+                'booking': booking.to_dict()
+            }
         }), 201
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"Error creating booking: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
