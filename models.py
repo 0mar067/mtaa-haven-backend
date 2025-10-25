@@ -38,6 +38,12 @@ class NotificationType(Enum):
     PAYMENT_DUE = "payment_due"
     GENERAL = "general"
 
+
+class BookingStatus(Enum):
+    PENDING = "pending"
+    CONFIRMED = "confirmed"
+    CANCELLED = "cancelled"
+
 class User(db.Model, SerializerMixin):
     __tablename__ = 'users'
 
@@ -95,7 +101,7 @@ class Payment(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     amount = db.Column(Numeric(10, 2), nullable=False)
-    payment_date = db.Column(db.DateTime, nullable=False)
+    payment_date = db.Column(db.DateTime, nullable=True)
     due_date = db.Column(db.DateTime, nullable=False)
     status = db.Column(db.Enum(PaymentStatus), default=PaymentStatus.PENDING)
     payment_method = db.Column(db.String(50))
@@ -145,3 +151,20 @@ class Notification(db.Model):
     # Relationships
     user = db.relationship('User', backref='notifications', lazy=True)
     property = db.relationship('Property', backref='notifications', lazy=True)
+
+
+class Booking(db.Model, SerializerMixin):
+    __tablename__ = 'bookings'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    property_id = db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=False)
+    start_date = db.Column(db.DateTime, nullable=False)
+    end_date = db.Column(db.DateTime, nullable=False)
+    status = db.Column(db.Enum(BookingStatus), default=BookingStatus.PENDING)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    tenant = db.relationship('User', backref='bookings', lazy=True)
+    property = db.relationship('Property', backref='bookings', lazy=True)
