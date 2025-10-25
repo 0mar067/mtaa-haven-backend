@@ -18,6 +18,9 @@ import time
 import threading
 import logging
 from flask_cors import CORS
+import cloudinary
+from cloudinary.uploader import upload, destroy
+from cloudinary.utils import cloudinary_url
 
 
 app = Flask(__name__)
@@ -38,6 +41,13 @@ app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_USERNAME'] = 'your-email@gmail.com'  # Replace with actual email
 app.config['MAIL_PASSWORD'] = 'your-password'  # Replace with actual password
 app.config['MAIL_DEFAULT_SENDER'] = 'your-email@gmail.com'
+
+# Cloudinary configuration
+cloudinary.config(
+    cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME', 'your-cloud-name'),
+    api_key=os.getenv('CLOUDINARY_API_KEY', 'your-api-key'),
+    api_secret=os.getenv('CLOUDINARY_API_SECRET', 'your-api-secret')
+)
 
 # Initialize extensions
 db.init_app(app)
