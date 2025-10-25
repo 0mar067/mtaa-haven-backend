@@ -1,10 +1,13 @@
 from flask import Blueprint, request, jsonify
 from flask_mail import Message
-from models import Notification, NotificationType, User, Property, Booking, BookingStatus, Payment, Issue, PropertyStatus, PaymentStatus, IssueStatus, IssueType, UserType
+from models import Notification, NotificationType, User, Property, Booking, BookingStatus, Payment, Issue, PropertyStatus, PaymentStatus, IssueStatus, IssueType, UserType, PropertyImage
 from database import db
 import logging
 from datetime import datetime
 from decimal import Decimal
+import cloudinary.uploader
+from PIL import Image
+import io
 
 api = Blueprint('api', __name__)
 
@@ -369,6 +372,20 @@ def get_properties():
         # Format response
         result = []
         for p in properties:
+            # Get property images
+            images = PropertyImage.query.filter_by(property_id=p.id).order_by(PropertyImage.display_order).all()
+            image_data = [{
+                'id': img.id,
+                'image_url': img.image_url,
+                'thumbnail_url': img.thumbnail_url,
+                'is_primary': img.is_primary
+            } for img in images]
+
+            # Get primary image URL and image count
+            primary_image = next((img for img in images if img.is_primary), None)
+            primary_image_url = primary_image.image_url if primary_image else None
+            image_count = len(images)
+
             prop_dict = {
                 'id': p.id,
                 'title': p.title,
@@ -383,6 +400,9 @@ def get_properties():
                 'status': p.status.value,
                 'landlord_id': p.landlord_id,
                 'tenant_id': p.tenant_id,
+                'primary_image_url': primary_image_url,
+                'image_count': image_count,
+                'images': image_data,
                 'created_at': p.created_at.isoformat(),
                 'updated_at': p.updated_at.isoformat()
             }
@@ -423,6 +443,20 @@ def get_property(current_user, property_id):
         if current_user.user_type == UserType.TENANT and property_obj.tenant_id != current_user.id:
             return jsonify({'error': 'Unauthorized access to property'}), 403
 
+        # Get property images
+        images = PropertyImage.query.filter_by(property_id=property_id).order_by(PropertyImage.display_order).all()
+        image_data = [{
+            'id': img.id,
+            'image_url': img.image_url,
+            'thumbnail_url': img.thumbnail_url,
+            'is_primary': img.is_primary
+        } for img in images]
+
+        # Get primary image URL and image count
+        primary_image = next((img for img in images if img.is_primary), None)
+        primary_image_url = primary_image.image_url if primary_image else None
+        image_count = len(images)
+
         return jsonify({
             'id': property_obj.id,
             'title': property_obj.title,
@@ -437,6 +471,9 @@ def get_property(current_user, property_id):
             'status': property_obj.status.value,
             'landlord_id': property_obj.landlord_id,
             'tenant_id': property_obj.tenant_id,
+            'primary_image_url': primary_image_url,
+            'image_count': image_count,
+            'images': image_data,
             'created_at': property_obj.created_at.isoformat(),
             'updated_at': property_obj.updated_at.isoformat()
         })
@@ -522,6 +559,20 @@ def create_property(current_user):
         db.session.add(property_obj)
         db.session.commit()
 
+        # Get property images (should be empty for new property)
+        images = PropertyImage.query.filter_by(property_id=property_obj.id).order_by(PropertyImage.display_order).all()
+        image_data = [{
+            'id': img.id,
+            'image_url': img.image_url,
+            'thumbnail_url': img.thumbnail_url,
+            'is_primary': img.is_primary
+        } for img in images]
+
+        # Get primary image URL and image count
+        primary_image = next((img for img in images if img.is_primary), None)
+        primary_image_url = primary_image.image_url if primary_image else None
+        image_count = len(images)
+
         return jsonify({
             'message': 'Property created successfully',
             'property_id': property_obj.id,
@@ -539,6 +590,9 @@ def create_property(current_user):
                 'status': property_obj.status.value,
                 'landlord_id': property_obj.landlord_id,
                 'tenant_id': property_obj.tenant_id,
+                'primary_image_url': primary_image_url,
+                'image_count': image_count,
+                'images': image_data,
                 'created_at': property_obj.created_at.isoformat(),
                 'updated_at': property_obj.updated_at.isoformat()
             }
@@ -622,6 +676,20 @@ def update_property(current_user, property_id):
 
         db.session.commit()
 
+        # Get property images
+        images = PropertyImage.query.filter_by(property_id=property_id).order_by(PropertyImage.display_order).all()
+        image_data = [{
+            'id': img.id,
+            'image_url': img.image_url,
+            'thumbnail_url': img.thumbnail_url,
+            'is_primary': img.is_primary
+        } for img in images]
+
+        # Get primary image URL and image count
+        primary_image = next((img for img in images if img.is_primary), None)
+        primary_image_url = primary_image.image_url if primary_image else None
+        image_count = len(images)
+
         return jsonify({
             'message': 'Property updated successfully',
             'property': {
@@ -638,6 +706,9 @@ def update_property(current_user, property_id):
                 'status': property_obj.status.value,
                 'landlord_id': property_obj.landlord_id,
                 'tenant_id': property_obj.tenant_id,
+                'primary_image_url': primary_image_url,
+                'image_count': image_count,
+                'images': image_data,
                 'created_at': property_obj.created_at.isoformat(),
                 'updated_at': property_obj.updated_at.isoformat()
             }
@@ -827,6 +898,411 @@ def get_payment(current_user, payment_id):
 
     except Exception as e:
         logging.error(f"Error retrieving payment {payment_id}: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# Property Image Management endpoints
+@api.route('/properties/<int:property_id>/images', methods=['POST'])
+@token_required
+def upload_property_images(current_user, property_id):
+    """
+    Upload images for a property (landlords only).
+    Supports up to 10 images per property with automatic thumbnail generation.
+    ---
+    security:
+      - Bearer: []
+    parameters:
+      - name: property_id
+        in: path
+        type: integer
+        required: true
+      - name: images
+        in: formData
+        type: file
+        required: true
+        description: Image files (multiple allowed, max 10 per property)
+      - name: is_primary
+        in: formData
+        type: boolean
+        required: false
+        description: Set first image as primary (default false)
+    responses:
+      201:
+        description: Images uploaded successfully
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: "success"
+            message:
+              type: string
+            data:
+              type: object
+              properties:
+                uploaded_images:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      image_url:
+                        type: string
+                      thumbnail_url:
+                        type: string
+                      is_primary:
+                        type: boolean
+      400:
+        description: Invalid file or validation error
+      403:
+        description: Only property landlords can upload images
+      404:
+        description: Property not found
+    """
+    try:
+        # Check if property exists and user has access
+        property_obj = Property.query.get_or_404(property_id)
+        if current_user.user_type != UserType.LANDLORD or property_obj.landlord_id != current_user.id:
+            return jsonify({'status': 'error', 'message': 'Only property landlords can upload images'}), 403
+
+        # Check current image count
+        current_images = PropertyImage.query.filter_by(property_id=property_id).count()
+        if current_images >= 10:
+            return jsonify({'status': 'error', 'message': 'Maximum 10 images allowed per property'}), 400
+
+        # Get uploaded files
+        if 'images' not in request.files:
+            return jsonify({'status': 'error', 'message': 'No image files provided'}), 400
+
+        files = request.files.getlist('images')
+        if not files or files[0].filename == '':
+            return jsonify({'status': 'error', 'message': 'No image files provided'}), 400
+
+        # Validate file count
+        available_slots = 10 - current_images
+        if len(files) > available_slots:
+            return jsonify({'status': 'error', 'message': f'Too many images. Only {available_slots} more images allowed'}), 400
+
+        uploaded_images = []
+        is_primary = request.form.get('is_primary', 'false').lower() == 'true'
+
+        for i, file in enumerate(files):
+            if file and file.filename:
+                # Validate file type
+                allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+                if not file.filename.lower().split('.')[-1] in allowed_extensions:
+                    continue  # Skip invalid files
+
+                # Validate file size (max 5MB)
+                file.seek(0, 2)  # Seek to end
+                file_size = file.tell()
+                file.seek(0)  # Reset to beginning
+                if file_size > 5 * 1024 * 1024:  # 5MB
+                    continue  # Skip large files
+
+                try:
+                    # Process image with Pillow for validation and optimization
+                    image = Image.open(file)
+                    image.verify()  # Verify it's a valid image
+                    file.seek(0)  # Reset file pointer
+
+                    # Upload to Cloudinary
+                    upload_result = cloudinary.uploader.upload(
+                        file,
+                        folder=f"mtaa_haven/properties/{property_id}",
+                        transformation=[
+                            {'width': 1200, 'height': 800, 'crop': 'limit'},
+                            {'quality': 'auto'}
+                        ]
+                    )
+
+                    # Generate thumbnail
+                    thumbnail_result = cloudinary.uploader.upload(
+                        file,
+                        folder=f"mtaa_haven/properties/{property_id}/thumbnails",
+                        transformation=[
+                            {'width': 300, 'height': 200, 'crop': 'fill'},
+                            {'quality': 'auto'}
+                        ]
+                    )
+
+                    # Create database record
+                    display_order = current_images + i
+                    property_image = PropertyImage(
+                        property_id=property_id,
+                        image_url=upload_result['secure_url'],
+                        thumbnail_url=thumbnail_result['secure_url'],
+                        public_id=upload_result['public_id'],
+                        is_primary=is_primary and i == 0,  # Only first image can be primary
+                        display_order=display_order
+                    )
+
+                    db.session.add(property_image)
+                    uploaded_images.append({
+                        'id': property_image.id,
+                        'image_url': property_image.image_url,
+                        'thumbnail_url': property_image.thumbnail_url,
+                        'is_primary': property_image.is_primary
+                    })
+
+                except Exception as upload_error:
+                    logging.error(f"Error uploading image {file.filename}: {str(upload_error)}")
+                    continue
+
+        db.session.commit()
+
+        if not uploaded_images:
+            return jsonify({'status': 'error', 'message': 'No images were successfully uploaded'}), 400
+
+        return jsonify({
+            'status': 'success',
+            'message': f'Successfully uploaded {len(uploaded_images)} image(s)',
+            'data': {
+                'uploaded_images': uploaded_images
+            }
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        logging.error(f"Error in upload_property_images: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# Dashboard endpoints
+@api.route('/dashboard/stats', methods=['GET'])
+@token_required
+def get_dashboard_stats(current_user):
+    """
+    Get dashboard statistics for landlords.
+    ---
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: Dashboard statistics
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: "success"
+            data:
+              type: object
+              properties:
+                properties:
+                  type: integer
+                  description: Number of properties owned by the landlord
+                tenants:
+                  type: integer
+                  description: Number of tenants renting landlord's properties
+                issues:
+                  type: integer
+                  description: Number of open issues for landlord's properties
+                payments:
+                  type: integer
+                  description: Total number of payments for landlord's properties
+      403:
+        description: Only landlords can access dashboard stats
+    """
+    try:
+        if current_user.user_type != UserType.LANDLORD:
+            return jsonify({'status': 'error', 'message': 'Only landlords can access dashboard statistics'}), 403
+
+        # Get properties count
+        properties_count = Property.query.filter_by(landlord_id=current_user.id).count()
+
+        # Get tenants count (unique tenants renting landlord's properties)
+        tenants_count = db.session.query(User).join(Property, Property.tenant_id == User.id)\
+            .filter(Property.landlord_id == current_user.id)\
+            .filter(Property.tenant_id.isnot(None))\
+            .distinct().count()
+
+        # Get open issues count
+        issues_count = Issue.query.join(Property)\
+            .filter(Property.landlord_id == current_user.id)\
+            .filter(Issue.status != IssueStatus.RESOLVED)\
+            .count()
+
+        # Get payments count
+        payments_count = Payment.query.join(Property)\
+            .filter(Property.landlord_id == current_user.id)\
+            .count()
+
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'properties': properties_count,
+                'tenants': tenants_count,
+                'issues': issues_count,
+                'payments': payments_count
+            }
+        })
+
+    except Exception as e:
+        logging.error(f"Error retrieving dashboard stats: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@api.route('/properties/<int:property_id>/images', methods=['GET'])
+def get_property_images(property_id):
+    """
+    Get all images for a property.
+    ---
+    parameters:
+      - name: property_id
+        in: path
+        type: integer
+        required: true
+    responses:
+      200:
+        description: List of property images
+        schema:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              image_url:
+                type: string
+              thumbnail_url:
+                type: string
+              is_primary:
+                type: boolean
+              display_order:
+                type: integer
+      404:
+        description: Property not found
+    """
+    try:
+        # Verify property exists
+        property_obj = Property.query.get_or_404(property_id)
+
+        images = PropertyImage.query.filter_by(property_id=property_id).order_by(PropertyImage.display_order).all()
+
+        return jsonify([{
+            'id': img.id,
+            'image_url': img.image_url,
+            'thumbnail_url': img.thumbnail_url,
+            'is_primary': img.is_primary,
+            'display_order': img.display_order,
+            'created_at': img.created_at.isoformat()
+        } for img in images])
+
+    except Exception as e:
+        logging.error(f"Error retrieving property images: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@api.route('/properties/<int:property_id>/images/<int:image_id>', methods=['DELETE'])
+@token_required
+def delete_property_image(current_user, property_id, image_id):
+    """
+    Delete a specific property image (landlords only).
+    ---
+    security:
+      - Bearer: []
+    parameters:
+      - name: property_id
+        in: path
+        type: integer
+        required: true
+      - name: image_id
+        in: path
+        type: integer
+        required: true
+    responses:
+      200:
+        description: Image deleted successfully
+      403:
+        description: Only property landlords can delete images
+      404:
+        description: Property or image not found
+    """
+    try:
+        # Check if property exists and user has access
+        property_obj = Property.query.get_or_404(property_id)
+        if current_user.user_type != UserType.LANDLORD or property_obj.landlord_id != current_user.id:
+            return jsonify({'status': 'error', 'message': 'Only property landlords can delete images'}), 403
+
+        # Find the image
+        image = PropertyImage.query.filter_by(id=image_id, property_id=property_id).first()
+        if not image:
+            return jsonify({'status': 'error', 'message': 'Image not found'}), 404
+
+        # Delete from Cloudinary
+        try:
+            cloudinary.uploader.destroy(image.public_id)
+        except Exception as cloud_error:
+            logging.warning(f"Failed to delete image from Cloudinary: {str(cloud_error)}")
+
+        # Delete from database
+        db.session.delete(image)
+        db.session.commit()
+
+        return jsonify({
+            'status': 'success',
+            'message': 'Image deleted successfully'
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        logging.error(f"Error deleting property image: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@api.route('/properties/<int:property_id>/images/<int:image_id>/primary', methods=['PUT'])
+@token_required
+def set_primary_image(current_user, property_id, image_id):
+    """
+    Set an image as the primary image for a property (landlords only).
+    ---
+    security:
+      - Bearer: []
+    parameters:
+      - name: property_id
+        in: path
+        type: integer
+        required: true
+      - name: image_id
+        in: path
+        type: integer
+        required: true
+    responses:
+      200:
+        description: Primary image updated successfully
+      403:
+        description: Only property landlords can set primary images
+      404:
+        description: Property or image not found
+    """
+    try:
+        # Check if property exists and user has access
+        property_obj = Property.query.get_or_404(property_id)
+        if current_user.user_type != UserType.LANDLORD or property_obj.landlord_id != current_user.id:
+            return jsonify({'status': 'error', 'message': 'Only property landlords can set primary images'}), 403
+
+        # Find the image
+        image = PropertyImage.query.filter_by(id=image_id, property_id=property_id).first()
+        if not image:
+            return jsonify({'status': 'error', 'message': 'Image not found'}), 404
+
+        # Remove primary status from all other images
+        PropertyImage.query.filter_by(property_id=property_id).update({'is_primary': False})
+
+        # Set this image as primary
+        image.is_primary = True
+        db.session.commit()
+
+        return jsonify({
+            'status': 'success',
+            'message': 'Primary image updated successfully'
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        logging.error(f"Error setting primary image: {str(e)}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 

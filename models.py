@@ -170,3 +170,22 @@ class Booking(db.Model, SerializerMixin):
     # Relationships
     tenant = db.relationship('User', backref='bookings', lazy=True)
     property = db.relationship('Property', backref='bookings', lazy=True)
+
+
+class PropertyImage(db.Model, SerializerMixin):
+    __tablename__ = 'property_images'
+
+    id = db.Column(db.Integer, primary_key=True)
+    property_id = db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=False)
+    image_url = db.Column(db.String(500), nullable=False)
+    thumbnail_url = db.Column(db.String(500), nullable=False)
+    public_id = db.Column(db.String(200), nullable=False)  # Cloudinary public ID
+    is_primary = db.Column(db.Boolean, default=False)
+    display_order = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    property = db.relationship('Property', backref='images', lazy=True)
+
+    serialize_rules = ('-property',)
