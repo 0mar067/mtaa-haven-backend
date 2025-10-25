@@ -2,14 +2,15 @@ from flask import Flask, request, jsonify
 from flask_migrate import Migrate
 from flask_mail import Mail
 import os
+import jwt
+from datetime import datetime, timedelta
+from functools import wraps
 from models import User
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime
 from database import db
 from models import User, Property, Payment, Issue, Notification
 from routes import api
 from models import User, Property, Payment, Issue, UserType, PropertyStatus, PaymentStatus, IssueStatus, IssueType
-from datetime import datetime
 from decimal import Decimal
 from flasgger import Swagger
 
@@ -22,6 +23,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = (
 )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'dev-secret-key'
+app.config['JWT_SECRET_KEY'] = 'jwt-secret-key'  # In production, use environment variable
 
 # Email configuration (mock for now)
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
@@ -39,6 +41,27 @@ swagger = Swagger(app)
 
 # Register blueprints
 app.register_blueprint(api, url_prefix='/api')
+
+
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        if not token:
+            return jsonify({'error': 'Token is missing'}), 401
+        try:
+            if token.startswith('Bearer '):
+                token = token.split(' ')[1]
+            data = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=['HS256'])
+            current_user = User.query.get(data['user_id'])
+            if not current_user:
+                return jsonify({'error': 'User not found'}), 401
+        except jwt.ExpiredSignatureError:
+            return jsonify({'error': 'Token has expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'error': 'Token is invalid'}), 401
+        return f(current_user, *args, **kwargs)
+    return decorated
 
 
 @app.route('/')
@@ -293,7 +316,15 @@ def login():
 
     user = User.query.filter_by(email=email).first()
     if user and check_password_hash(user.password_hash, password):
-        return jsonify({"message":"logged in successful", "user": user.to_dict()})
+        token = jwt.encode({
+            'user_id': user.id,
+            'exp': datetime.utcnow() + timedelta(hours=24)
+        }, app.config['JWT_SECRET_KEY'], algorithm='HS256')
+        return jsonify({
+            "message": "logged in successful",
+            "user": user.to_dict(),
+            "token": token
+        })
     return jsonify({'error': 'Invalid credentials'}), 401
 
 if __name__ == '__main__':
