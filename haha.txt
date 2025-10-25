@@ -1,0 +1,10 @@
+@app.route('/api/properties', methods=['GET'])
+def get_properties():
+    properties = Property.query.all()
+    
+    if not properties:
+        return jsonify({'message': 'No properties found'}), 404
+    return jsonify({'sucesss': True, 'properties': [prop.to_dict(only=('title',"description", "rent_amount","address", "city","bedrooms","bathrooms","area_sqft", "status")) for prop in properties]})
+
+CORS(app, supports_credentials=True, origins=["http://localhost:5173"])
+from flask_cors import CORS

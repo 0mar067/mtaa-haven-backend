@@ -17,6 +17,8 @@ import schedule
 import time
 import threading
 import logging
+from flask_cors import CORS
+
 
 app = Flask(__name__)
 
@@ -42,6 +44,8 @@ db.init_app(app)
 migrate = Migrate(app, db)
 mail = Mail(app)
 swagger = Swagger(app)
+CORS(app, supports_credentials=True, origins=["http://localhost:5173"])
+
 
 # Register blueprints
 app.register_blueprint(api, url_prefix='/api')
@@ -408,6 +412,15 @@ def login():
             "token": token
         })
     return jsonify({'error': 'Invalid credentials'}), 401
+  
+@app.route('/api/properties', methods=['GET'])
+def get_properties():
+    properties = Property.query.all()
+    
+    if not properties:
+        return jsonify({'message': 'No properties found'}), 404
+    return jsonify({'sucesss': True, 'properties': [prop.to_dict(only=('title',"description", "rent_amount","address", "city","bedrooms","bathrooms","area_sqft", "status")) for prop in properties]})
+
 
 if __name__ == '__main__':
     app.run(debug=True)
