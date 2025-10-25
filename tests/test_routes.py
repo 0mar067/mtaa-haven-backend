@@ -674,7 +674,9 @@ def test_get_issues_success(client, auth_headers):
 
     assert response.status_code == 200
     response_data = json.loads(response.data)
-    assert isinstance(response_data, list)
+    assert 'status' in response_data
+    assert 'data' in response_data
+    assert isinstance(response_data['data'], list)
 
 
 def test_update_issue_success(client, auth_headers):
@@ -699,7 +701,7 @@ def test_update_issue_success(client, auth_headers):
     issue_data = {
         'title': 'Leaky faucet',
         'description': 'The kitchen faucet is leaking',
-        'issue_type': 'MAINTENANCE',
+        'issue_type': 'maintenance',
         'property_id': property_id
     }
 
@@ -707,7 +709,7 @@ def test_update_issue_success(client, auth_headers):
                                  data=json.dumps(issue_data),
                                  content_type='application/json',
                                  headers=auth_headers)
-    issue_id = json.loads(create_response.data)['issue_id']
+    issue_id = json.loads(create_response.data)['data']['issue_id']
 
     # Update issue
     update_data = {

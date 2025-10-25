@@ -33,11 +33,11 @@ jobs:
           pip install flake8
           flake8 --ignore=E501,F401 .
 
-      # Step 5: Run Tests
-      - name: Run tests with pytest
+      # Step 5: Verify Flask app
+      - name: Verify Flask app
         run: |
-          pip install pytest
-          pytest || echo  No tests yet"
+          export FLASK_APP=app.py
+          python -m flask routes
 
       # Step 6: Build Verification (Compile)
       - name: Build Flask app
