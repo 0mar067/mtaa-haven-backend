@@ -12,6 +12,8 @@ from models import User, Property, Payment, Issue, UserType, PropertyStatus, Pay
 from datetime import datetime
 from decimal import Decimal
 from flasgger import Swagger
+from flask_cors import CORS
+
 
 app = Flask(__name__)
 
@@ -36,6 +38,8 @@ db.init_app(app)
 migrate = Migrate(app, db)
 mail = Mail(app)
 swagger = Swagger(app)
+CORS(app, supports_credentials=True, origins=["http://localhost:5173"])
+
 
 # Register blueprints
 app.register_blueprint(api, url_prefix='/api')
@@ -295,6 +299,15 @@ def login():
     if user and check_password_hash(user.password_hash, password):
         return jsonify({"message":"logged in successful", "user": user.to_dict()})
     return jsonify({'error': 'Invalid credentials'}), 401
+  
+@app.route('/api/properties', methods=['GET'])
+def get_properties():
+    properties = Property.query.all()
+    
+    if not properties:
+        return jsonify({'message': 'No properties found'}), 404
+    return jsonify({'sucesss': True, 'properties': [prop.to_dict(only=('title',"description", "rent_amount","address", "city","bedrooms","bathrooms","area_sqft", "status")) for prop in properties]})
+
 
 if __name__ == '__main__':
     app.run(debug=True)
