@@ -37,6 +37,13 @@ class NotificationType(Enum):
     RENT_REMINDER = "rent_reminder"
     PAYMENT_DUE = "payment_due"
     GENERAL = "general"
+    ISSUE_UPDATE = "issue_update"
+
+
+class BookingStatus(Enum):
+    PENDING = "pending"
+    CONFIRMED = "confirmed"
+    CANCELLED = "cancelled"
 
 class User(db.Model, SerializerMixin):
     __tablename__ = 'users'
@@ -79,6 +86,7 @@ class Property(db.Model, SerializerMixin):
     bedrooms = db.Column(db.Integer, nullable=False)
     bathrooms = db.Column(db.Integer, nullable=False)
     area_sqft = db.Column(db.Integer)
+    type = db.Column(db.String(50), nullable=True)  # e.g., "hostel", "airbnb", "apartment"
     status = db.Column(db.Enum(PropertyStatus), default=PropertyStatus.AVAILABLE)
     landlord_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     tenant_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
@@ -95,7 +103,7 @@ class Payment(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     amount = db.Column(Numeric(10, 2), nullable=False)
-    payment_date = db.Column(db.DateTime, nullable=False)
+    payment_date = db.Column(db.DateTime, nullable=True)
     due_date = db.Column(db.DateTime, nullable=False)
     status = db.Column(db.Enum(PaymentStatus), default=PaymentStatus.PENDING)
     payment_method = db.Column(db.String(50))
@@ -145,3 +153,39 @@ class Notification(db.Model):
     # Relationships
     user = db.relationship('User', backref='notifications', lazy=True)
     property = db.relationship('Property', backref='notifications', lazy=True)
+
+
+class Booking(db.Model, SerializerMixin):
+    __tablename__ = 'bookings'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    property_id = db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=False)
+    start_date = db.Column(db.DateTime, nullable=False)
+    end_date = db.Column(db.DateTime, nullable=False)
+    status = db.Column(db.Enum(BookingStatus), default=BookingStatus.PENDING)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    tenant = db.relationship('User', backref='bookings', lazy=True)
+    property = db.relationship('Property', backref='bookings', lazy=True)
+
+
+class PropertyImage(db.Model, SerializerMixin):
+    __tablename__ = 'property_images'
+
+    id = db.Column(db.Integer, primary_key=True)
+    property_id = db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=False)
+    image_url = db.Column(db.String(500), nullable=False)
+    thumbnail_url = db.Column(db.String(500), nullable=False)
+    public_id = db.Column(db.String(200), nullable=False)  # Cloudinary public ID
+    is_primary = db.Column(db.Boolean, default=False)
+    display_order = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    property = db.relationship('Property', backref='images', lazy=True)
+
+    serialize_rules = ('-property',)
