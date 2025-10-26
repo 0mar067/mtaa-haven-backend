@@ -307,6 +307,14 @@ def get_properties():
     if not properties:
         return jsonify({'message': 'No properties found'}), 404
     return jsonify({'sucesss': True, 'properties': [prop.to_dict(only=('title',"description", "rent_amount","address", "city","bedrooms","bathrooms","area_sqft", "status")) for prop in properties]})
+  
+@app.route('/api/properties/<int:property_id>', methods=['GET'])
+def get_property(property_id):
+    p = Property.query.get(property_id)
+    
+    if not p:
+        return jsonify({'message': 'Property not found'}), 404
+    return jsonify({'sucesss': True, 'property': p.to_dict(only=('title',"description", "rent_amount","address", "city","bedrooms","bathrooms","area_sqft", "status"))})
 
 
 if __name__ == '__main__':

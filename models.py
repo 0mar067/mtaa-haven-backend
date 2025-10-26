@@ -67,7 +67,7 @@ class User(db.Model, SerializerMixin):
     serialize_rules = ('-password_hash',)
 
 
-class Property(db.Model):
+class Property(db.Model, SerializerMixin):
     __tablename__ = 'properties'
 
     id = db.Column(db.Integer, primary_key=True)
