@@ -1,9 +1,8 @@
-from flask import Flask
+from flask import Flask, jsonify, request
 from flask_migrate import Migrate
 from flask_mail import Mail
 import os
 from database import db
-from models import User, Property, Payment, Issue, Notification
 from routes import api
 
 app = Flask(__name__)
@@ -30,13 +29,16 @@ mail = Mail(app)
 # Register blueprints
 app.register_blueprint(api, url_prefix='/api')
 
+
 @app.route('/')
 def index():
     return "Backend is working!"
 
+
 @app.route('/api/test', methods=['GET'])
 def test():
     return jsonify({'message': 'API is working'})
+
 
 @app.route('/api/test', methods=['POST'])
 def test_post():
@@ -45,8 +47,9 @@ def test_post():
         if data is None or data == {}:
             return jsonify({'error': 'No JSON data provided'}), 400
         return jsonify({'received': data, 'message': 'Data received successfully'})
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'Invalid JSON data'}), 400
+
 
 if __name__ == '__main__':
     app.run(debug=True)
