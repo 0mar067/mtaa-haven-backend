@@ -2,14 +2,16 @@ from flask import Blueprint, request, jsonify
 from flask_mail import Message
 from models import Notification, NotificationType, User, Property
 from database import db
-from app import mail
 import logging
 
+
 api = Blueprint('api', __name__)
+
 
 @api.route('/test', methods=['GET'])
 def test():
     return jsonify({'message': 'API is working'})
+
 
 @api.route('/test', methods=['POST'])
 def test_post():
@@ -18,8 +20,9 @@ def test_post():
         if data is None or data == {}:
             return jsonify({'error': 'No JSON data provided'}), 400
         return jsonify({'received': data, 'message': 'Data received successfully'})
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'Invalid JSON data'}), 400
+
 
 @api.route('/notifications', methods=['GET'])
 def get_notifications():
@@ -44,6 +47,7 @@ def get_notifications():
     ]
     return jsonify(mock_notifications)
 
+
 @api.route('/notifications', methods=['POST'])
 def create_notification():
     try:
@@ -67,6 +71,7 @@ def create_notification():
         logging.info(f"Mock email sent to {recipient_email}: {notification.title} - {notification.message}")
 
         # In a real implementation, uncomment the following:
+        # from app import mail
         # msg = Message(notification.title,
         #               sender=app.config['MAIL_DEFAULT_SENDER'],
         #               recipients=[recipient_email])
@@ -78,6 +83,20 @@ def create_notification():
             'notification_id': notification.id
         }), 201
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'An error occurred'}), 500
+
+
+@api.route('/notifications/<int:notification_id>', methods=['PUT'])
+def update_notification(notification_id):
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        # Mock update - in real app, query and update the notification
+        return jsonify({'message': f'Notification {notification_id} updated (mock)'}), 200
+
+    except Exception:
+        return jsonify({'error': 'An error occurred'}), 500
