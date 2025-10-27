@@ -3,37 +3,44 @@ from datetime import datetime
 from enum import Enum
 from sqlalchemy import Numeric
 
+
 class UserType(Enum):
     LANDLORD = "landlord"
     TENANT = "tenant"
+
 
 class PropertyStatus(Enum):
     AVAILABLE = "available"
     OCCUPIED = "occupied"
     MAINTENANCE = "maintenance"
 
+
 class PaymentStatus(Enum):
     PENDING = "pending"
     COMPLETED = "completed"
     FAILED = "failed"
+
 
 class IssueStatus(Enum):
     OPEN = "open"
     IN_PROGRESS = "in_progress"
     RESOLVED = "resolved"
 
+
 class IssueType(Enum):
     MAINTENANCE = "maintenance"
     DISPUTE = "dispute"
+
 
 class NotificationType(Enum):
     RENT_REMINDER = "rent_reminder"
     PAYMENT_DUE = "payment_due"
     GENERAL = "general"
 
+
 class User(db.Model):
     __tablename__ = 'users'
-    
+
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
@@ -43,16 +50,17 @@ class User(db.Model):
     user_type = db.Column(db.Enum(UserType), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # Relationships
     owned_properties = db.relationship('Property', foreign_keys='Property.landlord_id', backref='landlord', lazy=True, cascade='all, delete-orphan')
     rented_properties = db.relationship('Property', foreign_keys='Property.tenant_id', backref='tenant', lazy=True)
     payments = db.relationship('Payment', backref='user', lazy=True)
     issues = db.relationship('Issue', backref='reporter', lazy=True)
 
+
 class Property(db.Model):
     __tablename__ = 'properties'
-    
+
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text)
@@ -67,14 +75,15 @@ class Property(db.Model):
     tenant_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # Relationships
     payments = db.relationship('Payment', backref='property', lazy=True)
     issues = db.relationship('Issue', backref='property', lazy=True)
 
+
 class Payment(db.Model):
     __tablename__ = 'payments'
-    
+
     id = db.Column(db.Integer, primary_key=True)
     amount = db.Column(Numeric(10, 2), nullable=False)
     payment_date = db.Column(db.DateTime, nullable=False)
@@ -88,14 +97,23 @@ class Payment(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
 class Issue(db.Model):
     __tablename__ = 'issues'
-    
+
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text, nullable=False)
     issue_type = db.Column(db.Enum(IssueType), nullable=False)
     status = db.Column(db.Enum(IssueStatus), default=IssueStatus.OPEN)
+    priority = db.Column(db.String(20), default='medium')
+    reporter_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    property_id = db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=False)
+    resolved_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class Notification(db.Model):
     __tablename__ = 'notifications'
 
@@ -112,9 +130,3 @@ class Notification(db.Model):
     # Relationships
     user = db.relationship('User', backref='notifications', lazy=True)
     property = db.relationship('Property', backref='notifications', lazy=True)
-    priority = db.Column(db.String(20), default='medium')
-    reporter_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    property_id = db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=False)
-    resolved_at = db.Column(db.DateTime)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
