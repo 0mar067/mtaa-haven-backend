@@ -12,7 +12,7 @@ from models import User, Property, Payment, Issue, Notification
 from routes import api
 from models import User, Property, Payment, Issue, UserType, PropertyStatus, PaymentStatus, IssueStatus, IssueType, Booking, BookingStatus, NotificationType
 from decimal import Decimal
-from flasgger import Swagger
+from flasgger import Swagger 
 import schedule
 import time
 import threading
@@ -148,7 +148,7 @@ def token_required(f):
         try:
             if token.startswith('Bearer '):
                 token = token.split(' ')[1]
-            data = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=['HS256'])
+            data = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=['HS256']) 
             current_user = User.query.get(data['user_id'])
             if not current_user:
                 return jsonify({'error': 'User not found'}), 401
@@ -423,13 +423,7 @@ def login():
         })
     return jsonify({'error': 'Invalid credentials'}), 401
   
-@app.route('/api/properties', methods=['GET'])
-def get_properties():
-    properties = Property.query.all()
-    
-    if not properties:
-        return jsonify({'message': 'No properties found'}), 404
-    return jsonify({'sucesss': True, 'properties': [prop.to_dict(only=('title',"description", "rent_amount","address", "city","bedrooms","bathrooms","area_sqft", "status")) for prop in properties]})
+
 
 
 if __name__ == '__main__':
