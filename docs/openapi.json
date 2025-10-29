@@ -1,0 +1,391 @@
+{
+  "definitions": {},
+  "info": {
+    "description": "powered by Flasgger",
+    "termsOfService": "/tos",
+    "title": "A swagger API",
+    "version": "0.0.1"
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Backend is working",
+            "schema": {
+              "type": "string"
+            }
+          }
+        },
+        "summary": "Root endpoint to check if the backend is working."
+      }
+    },
+    "/api/login": {
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "properties": {
+                "email": {
+                  "example": "user@example.com",
+                  "format": "email",
+                  "type": "string"
+                },
+                "password": {
+                  "example": "password123",
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "email",
+                "password"
+              ],
+              "type": "object"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "schema": {
+              "properties": {
+                "message": {
+                  "example": "logged in successful",
+                  "type": "string"
+                },
+                "user": {
+                  "properties": {
+                    "email": {
+                      "type": "string"
+                    },
+                    "first_name": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "integer"
+                    },
+                    "last_name": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": "string"
+                    },
+                    "user_type": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "400": {
+            "description": "No data provided or missing required fields",
+            "schema": {
+              "properties": {
+                "error": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "401": {
+            "description": "Invalid credentials",
+            "schema": {
+              "properties": {
+                "error": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          }
+        },
+        "summary": "Login with email and password."
+      }
+    },
+    "/api/notifications": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "List of notifications",
+            "schema": {
+              "items": {
+                "properties": {
+                  "created_at": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "integer"
+                  },
+                  "is_read": {
+                    "type": "boolean"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "array"
+            }
+          }
+        },
+        "summary": "Get notifications for the user."
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "properties": {
+                "email": {
+                  "example": "tenant@example.com",
+                  "format": "email",
+                  "type": "string"
+                },
+                "message": {
+                  "example": "Your rent is due soon.",
+                  "type": "string"
+                },
+                "property_id": {
+                  "type": "integer"
+                },
+                "title": {
+                  "example": "Rent Reminder",
+                  "type": "string"
+                },
+                "user_id": {
+                  "example": 1,
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Notification created successfully",
+            "schema": {
+              "properties": {
+                "message": {
+                  "example": "Notification created and email sent (mock)",
+                  "type": "string"
+                },
+                "notification_id": {
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "400": {
+            "description": "No data provided",
+            "schema": {
+              "properties": {
+                "error": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "schema": {
+              "properties": {
+                "error": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          }
+        },
+        "summary": "Create a new notification."
+      }
+    },
+    "/api/register": {
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "properties": {
+                "email": {
+                  "example": "user@example.com",
+                  "format": "email",
+                  "type": "string"
+                },
+                "first_name": {
+                  "example": "John",
+                  "type": "string"
+                },
+                "last_name": {
+                  "example": "Doe",
+                  "type": "string"
+                },
+                "password": {
+                  "example": "password123",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "phone": {
+                  "example": "+1234567890",
+                  "type": "string"
+                },
+                "user_type": {
+                  "enum": [
+                    "LANDLORD",
+                    "TENANT"
+                  ],
+                  "example": "TENANT",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "email",
+                "first_name",
+                "last_name",
+                "user_type",
+                "password"
+              ],
+              "type": "object"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User registered successfully",
+            "schema": {
+              "properties": {
+                "Success": {
+                  "example": true,
+                  "type": "boolean"
+                },
+                "user": {
+                  "properties": {
+                    "email": {
+                      "type": "string"
+                    },
+                    "first_name": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "integer"
+                    },
+                    "last_name": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": "string"
+                    },
+                    "user_type": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "400": {
+            "description": "Missing required fields or no data provided",
+            "schema": {
+              "properties": {
+                "error": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          }
+        },
+        "summary": "Register a new user (landlord or tenant)."
+      }
+    },
+    "/api/test": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "API is working",
+            "schema": {
+              "properties": {
+                "message": {
+                  "example": "API is working",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          }
+        },
+        "summary": "Test endpoint for API functionality."
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "example": {
+                "key": "value"
+              },
+              "type": "object"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Data received successfully",
+            "schema": {
+              "properties": {
+                "message": {
+                  "example": "Data received successfully",
+                  "type": "string"
+                },
+                "received": {
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "400": {
+            "description": "No JSON data provided or invalid JSON",
+            "schema": {
+              "properties": {
+                "error": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          }
+        },
+        "summary": "Test endpoint for POST requests with JSON data."
+      }
+    }
+  },
+  "swagger": "2.0"
+}
