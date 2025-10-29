@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 from database import db
-from models import User, Property, Payment, Issue, UserType
+from models import User, Property, Payment, Issue, UserType, IssueStatus, PaymentStatus
+from datetime import datetime
 
 api = Blueprint('api', __name__)
 
@@ -136,4 +137,83 @@ def get_issues():
         issues = Issue.query.all()
         return jsonify([{'id': i.id, 'description': i.description, 'status': i.status.value, 'user_id': i.reporter_id, 'property_id': i.property_id} for i in issues])
     except Exception as e:
+        return jsonify({'error': 'Server error'}), 500
+
+# Landlord-specific endpoints
+@api.route('/properties/landlord/<int:landlord_id>', methods=['GET'])
+def get_landlord_properties(landlord_id):
+    try:
+        properties = Property.query.filter_by(landlord_id=landlord_id).all()
+        return jsonify({
+            'data': [{
+                'id': p.id, 
+                'title': p.title, 
+                'rent_amount': float(p.rent_amount), 
+                'status': p.status.value,
+                'city': p.city,
+                'bedrooms': p.bedrooms,
+                'bathrooms': p.bathrooms
+            } for p in properties]
+        })
+    except Exception as e:
+        return jsonify({'error': 'Server error'}), 500
+
+@api.route('/bookings/landlord/<int:landlord_id>', methods=['GET'])
+def get_landlord_bookings(landlord_id):
+    try:
+        from models import Booking
+        bookings = db.session.query(Booking).join(Property).filter(Property.landlord_id == landlord_id).all()
+        return jsonify({
+            'data': [{
+                'id': b.id,
+                'property_id': b.property_id,
+                'tenant_id': b.tenant_id,
+                'start_date': b.start_date.isoformat() if b.start_date else None,
+                'end_date': b.end_date.isoformat() if b.end_date else None,
+                'status': b.status.value
+            } for b in bookings]
+        })
+    except Exception as e:
+        return jsonify({'error': 'Server error'}), 500
+
+@api.route('/issues/landlord/<int:landlord_id>', methods=['GET'])
+def get_landlord_issues(landlord_id):
+    try:
+        issues = db.session.query(Issue).join(Property).filter(Property.landlord_id == landlord_id).all()
+        return jsonify({
+            'data': [{
+                'id': i.id,
+                'title': i.title,
+                'description': i.description,
+                'status': i.status.value,
+                'priority': i.priority,
+                'property_id': i.property_id,
+                'created_at': i.created_at.isoformat() if i.created_at else None
+            } for i in issues]
+        })
+    except Exception as e:
+        return jsonify({'error': 'Server error'}), 500
+
+@api.route('/issues/<int:issue_id>/resolve', methods=['PATCH'])
+def resolve_issue(issue_id):
+    try:
+        issue = Issue.query.get_or_404(issue_id)
+        issue.status = IssueStatus.RESOLVED
+        issue.resolved_at = datetime.utcnow()
+        db.session.commit()
+        return jsonify({'message': 'Issue resolved successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': 'Server error'}), 500
+
+@api.route('/payments/confirm/<int:payment_id>', methods=['PATCH'])
+def confirm_payment(payment_id):
+    try:
+        payment = Payment.query.get_or_404(payment_id)
+        payment.status = PaymentStatus.COMPLETED
+        payment.payment_date = datetime.utcnow()
+        db.session.commit()
+        return jsonify({'message': 'Payment confirmed successfully'})
+    except Exception as e:
+        db.session.rollback()
         return jsonify({'error': 'Server error'}), 500
