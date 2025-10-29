@@ -7,25 +7,21 @@ from sqlalchemy_serializer import SerializerMixin
 # Define Enums for various statuses and types used in the application
 # These enums help in maintaining consistent values across the application
 
-
 class UserType(Enum):
     LANDLORD = "landlord"
     TENANT = "tenant"
     STUDENT = "student"
-
 
 class PropertyStatus(Enum):
     AVAILABLE = "available"
     OCCUPIED = "occupied"
     MAINTENANCE = "maintenance"
 
-
 class PaymentStatus(Enum):
     PENDING = "pending"
     COMPLETED = "completed"
     FAILED = "failed"
-
-
+    
 class IssueStatus(Enum):
     OPEN = "open"
     IN_PROGRESS = "in_progress"
@@ -36,6 +32,7 @@ class IssueType(Enum):
     MAINTENANCE = "maintenance"
     DISPUTE = "dispute"
 
+
 class NotificationType(Enum):
     RENT_REMINDER = "rent_reminder"
     PAYMENT_DUE = "payment_due"
@@ -43,6 +40,7 @@ class NotificationType(Enum):
     ISSUE_UPDATE = "issue_update"
 
 
+class User(db.Model):
 class BookingStatus(Enum):
     PENDING = "pending"
     CONFIRMED = "confirmed"
@@ -74,6 +72,8 @@ class User(db.Model, SerializerMixin):
     payments = db.relationship('Payment', backref='user', lazy=True)
     issues = db.relationship('Issue', backref='reporter', lazy=True)
 
+
+class Property(db.Model):
     serialize_rules = ('-password_hash',)
 
 
@@ -131,6 +131,13 @@ class Issue(db.Model):
     issue_type = db.Column(db.Enum(IssueType), nullable=False)
     status = db.Column(db.Enum(IssueStatus), default=IssueStatus.OPEN)
     priority = db.Column(db.String(20), default='medium')
+    reporter_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    property_id = db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=False)
+    resolved_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
     reporter_id = db.Column(db.Integer,
                             db.ForeignKey('users.id'),
                             nullable=False)
