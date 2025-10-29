@@ -16,7 +16,7 @@ def get_users():
     except Exception as e:
         return jsonify({'error': 'Server error'}), 500
 
-@api.route('/users', methods=['POST'])
+@api.route('/register', methods=['POST'])
 def create_user():
     data = request.get_json()
     if not data or not all(k in data for k in ['email', 'first_name', 'last_name', 'user_type', 'password']):
