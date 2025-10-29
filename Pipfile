@@ -12,6 +12,7 @@ gunicorn = "==21.2.0"
 sqlalchemy-serializer = "*"
 flask-mail = "*"
 flasgger = "*"
+flask-jwt-extended = "*"
 
 [dev-packages]
 

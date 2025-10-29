@@ -21,6 +21,7 @@ from flask_cors import CORS
 import cloudinary
 from cloudinary.uploader import upload, destroy
 from cloudinary.utils import cloudinary_url
+from flask_jwt_extended import create_access_token, JWTManager  
 
 
 app = Flask(__name__)
@@ -53,12 +54,56 @@ cloudinary.config(
 db.init_app(app)
 migrate = Migrate(app, db)
 mail = Mail(app)
+jwt = JWTManager(app)
 swagger = Swagger(app)
-CORS(app, supports_credentials=True, origins=["http://localhost:5173"])
 
-
+CORS(app, resources={
+    r"/*": {
+        "origins": ["http://localhost:5174"],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True
+    }
+})
 # Register blueprints
-app.register_blueprint(api, url_prefix='/api')
+# app.register_blueprint(api, url_prefix='/api')
+
+@app.route('/api/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    
+    if not data:
+      return jsonify({'error': 'No input data provided'}), 400
+    
+    first_name = data.get('first_name')
+    last_name = data.get('last_name')
+    email = data.get('email')
+    password = data.get('password')
+    phone = data.get('phone')
+    user_type = data.get('user_type')
+    
+    password_hash = generate_password_hash(password)
+    
+    new_user = User(first_name=first_name,last_name=last_name,email=email,password_hash=password_hash,phone=phone,user_type=user_type)
+    db.session.add(new_user)
+    db.session.commit()
+    return jsonify({'message': 'User created successfully', 'user_id': new_user.id}), 201
+  
+@app.route('/api/login', methods=['POST'])
+def login():
+  data = request.get_json()
+  email = data.get('email')
+  password = data.get('password')
+  
+  if not email or not password:
+    return jsonify({'error': 'Email and password are required'}), 400
+  
+  user = User.query.filter_by(email=email).first()
+  if not user or not check_password_hash(user.password_hash, password):
+    return jsonify({'error': 'Invalid email or password'}), 401
+  
+  token = create_access_token(identity=user.id) 
+  return jsonify({'message': 'Login successful','token': token,'user': user.to_dict()}), 200
 
 def send_rent_reminders():
     """Background task to send rent payment reminders"""
@@ -207,6 +252,10 @@ def get_property(property_id):
     if not p:
         return jsonify({'message': 'Property not found'}), 404
     return jsonify({'sucesss': True, 'property': p.to_dict(only=('title',"description", "rent_amount","address", "city","bedrooms","bathrooms","area_sqft", "status"))})
+
+
+    
+    
 
 if __name__ == '__main__':
     app.run(debug=True)
