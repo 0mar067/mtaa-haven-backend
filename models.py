@@ -4,11 +4,14 @@ from enum import Enum
 from sqlalchemy import Numeric
 from sqlalchemy_serializer import SerializerMixin
 
+# Define Enums for various statuses and types used in the application
+# These enums help in maintaining consistent values across the application
 
 
 class UserType(Enum):
     LANDLORD = "landlord"
     TENANT = "tenant"
+    STUDENT = "student"
 
 
 class PropertyStatus(Enum):
