@@ -10,6 +10,12 @@ flask-migrate = "==4.0.5"
 python-dotenv = "==1.0.0"
 gunicorn = "==21.2.0"
 sqlalchemy-serializer = "*"
+flask-mail = "*"
+pyjwt = "*"
+flasgger = "*"
+schedule = "*"
+flask-cors = "*"
+cloudinary = "*"
 
 [dev-packages]
 

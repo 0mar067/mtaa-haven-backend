@@ -4,11 +4,16 @@ from enum import Enum
 from sqlalchemy import Numeric
 from sqlalchemy_serializer import SerializerMixin
 
-
+# Enums for different types and statuses
+# These enums help in maintaining consistent values across the application
+# and make it easier to manage different states of entities like users, properties, payments, etc
+# They also improve code readability and maintainability by providing meaningful names for various states.
 
 class UserType(Enum):
     LANDLORD = "landlord"
     TENANT = "tenant"
+    STUDENT = "student"
+
 
 
 class PropertyStatus(Enum):
@@ -45,7 +50,7 @@ class BookingStatus(Enum):
     CONFIRMED = "confirmed"
     CANCELLED = "cancelled"
 
-class User(db.Model, SerializerMixin):
+class User(db.Model, SerializerMixin ):
     __tablename__ = 'users'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -59,17 +64,26 @@ class User(db.Model, SerializerMixin):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
+    # 1. owned_properties: Properties owned by the landlord
     owned_properties = db.relationship('Property',
                                        foreign_keys='Property.landlord_id',
                                        backref='landlord',
                                        lazy=True,
                                        cascade='all, delete-orphan')
+    # This relationship allows a landlord to have multiple properties
     rented_properties = db.relationship('Property',
                                         foreign_keys='Property.tenant_id',
                                         backref='tenant',
                                         lazy=True)
+    # This relationship allows a tenant to have multiple rented properties
+    bookings = db.relationship('Booking', backref='tenant', lazy=True)
+    # This relationship allows a tenant to have multiple bookings
     payments = db.relationship('Payment', backref='user', lazy=True)
+    # This relationship allows a user to have multiple payments
+    notifications = db.relationship('Notification', backref='user', lazy=True)
+    # This relationship allows a user to have multiple notifications
     issues = db.relationship('Issue', backref='reporter', lazy=True)
+    # This relationship allows a user to report multiple issues
 
     serialize_rules = ('-password_hash',)
 
@@ -87,15 +101,26 @@ class Property(db.Model):
     bathrooms = db.Column(db.Integer, nullable=False)
     area_sqft = db.Column(db.Integer)
     type = db.Column(db.String(50), nullable=True)  # e.g., "hostel", "airbnb", "apartment"
+    longitude = db.Column(db.Float, nullable=True)
+    latitude = db.Column(db.Float, nullable=True)
     status = db.Column(db.Enum(PropertyStatus), default=PropertyStatus.AVAILABLE)
     landlord_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     tenant_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
+    # Relationships(1 to many relationships)
     payments = db.relationship('Payment', backref='property', lazy=True)
+    # This relationship allows a property to have multiple payments
+    bookings = db.relationship('Booking', backref='property', lazy=True)
+    # This relationship allows a property to have multiple bookings
+    images = db.relationship('PropertyImage', backref='property', lazy=True)
+    # This relationship allows a property to have multiple images
+    notifications = db.relationship('Notification', backref='property', lazy=True)
+    # This relationship allows a property to have multiple notifications
     issues = db.relationship('Issue', backref='property', lazy=True)
+    # This relationship allows a property to have multiple issues reported against it
 
 
 class Payment(db.Model):
@@ -152,7 +177,9 @@ class Notification(db.Model):
 
     # Relationships
     user = db.relationship('User', backref='notifications', lazy=True)
-    property = db.relationship('Property', backref='notifications', lazy=True)
+    # This relationship allows a user to have multiple notifications
+    property = db.relationship('Property', backref='notifications', lazy=True) 
+    # This relationship allows a property to have multiple notifications
 
 
 class Booking(db.Model, SerializerMixin):
@@ -169,6 +196,7 @@ class Booking(db.Model, SerializerMixin):
 
     # Relationships
     tenant = db.relationship('User', backref='bookings', lazy=True)
+    student = db.relationship('User', backref='bookings', lazy=True)
     property = db.relationship('Property', backref='bookings', lazy=True)
 
 

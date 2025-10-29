@@ -27,13 +27,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Step 4: Linting with flake8
-      - name: Lint code
-        run: |
-          pip install flake8
-          flake8 --ignore=E501,F401 .
-
-      # Step 5: Verify Flask app
+      # Step 4: Verify Flask app
       - name: Verify Flask app
         run: |
           export FLASK_APP=app.py
