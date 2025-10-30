@@ -15,6 +15,7 @@ flasgger = "*"
 flask-jwt-extended = "*"
 flask-cors = "*"
 schedule = "*"
+cloudinary = "*"
 
 [dev-packages]
 
