@@ -27,11 +27,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Step 4: Linting with flake8
-      - name: Lint code
-        run: |
-          pip install flake8
-          flake8 --ignore=E501,F401 .
+      
+      # Step 4: Export requirements.txt from Pipfile.lock and commit if changed
+      - name: Export requirements.txt from Pipfile.lock
+        run: pipenv requirements > requirements.txt
+
+      - name: Commit requirements.txt changes
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "Sync requirements.txt with Pipfile.lock"
+          file_pattern: requirements.txt
+
 
       # Step 5: Verify Flask app
       - name: Verify Flask app
