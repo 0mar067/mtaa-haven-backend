@@ -40,7 +40,6 @@ class NotificationType(Enum):
     ISSUE_UPDATE = "issue_update"
 
 
-class User(db.Model):
 class BookingStatus(Enum):
     PENDING = "pending"
     CONFIRMED = "confirmed"
@@ -71,10 +70,6 @@ class User(db.Model, SerializerMixin):
                                         lazy=True)
     payments = db.relationship('Payment', backref='user', lazy=True)
     issues = db.relationship('Issue', backref='reporter', lazy=True)
-
-
-class Property(db.Model):
-    serialize_rules = ('-password_hash',)
 
 
 class Property(db.Model, SerializerMixin):
