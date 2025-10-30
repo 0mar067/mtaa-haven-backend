@@ -7,6 +7,12 @@ from datetime import datetime, timedelta
 def seed_data():
     with app.app_context():
         print("🌱 Seeding users and properties...")
+        
+        db.session.query(Property).delete()
+        db.session.query(User).delete()
+        db.session.commit()
+
+        print("✅ All previous data deleted successfully!\n🌱 Now seeding fresh data...")
 
         # ---------------- USERS ----------------
         landlord1 = User(
@@ -59,7 +65,9 @@ def seed_data():
             rent_amount=55000.00,
             bedrooms=2,
             bathrooms=2,
+            type="Apartment",
             area_sqft=950,
+            url='https://cdn.home-designing.com/wp-content/uploads/2016/11/grey-slate-tile-feature-wall-modern-apartment.jpg',
             status=PropertyStatus.AVAILABLE,
             landlord_id=landlord1.id
         )
@@ -73,6 +81,8 @@ def seed_data():
             bedrooms=1,
             bathrooms=1,
             area_sqft=500,
+            type="Studio",
+            url='https://cf.bstatic.com/xdata/images/hotel/max1024x768/509547813.jpg?k=e9c1bf1787b884cfdeccb1dc5094186d5c519f855a4b87ea2bfa72dde8d05e41&o=&hp=1',
             status=PropertyStatus.OCCUPIED,
             landlord_id=landlord2.id,
             tenant_id=tenant1.id
@@ -86,7 +96,9 @@ def seed_data():
             rent_amount=150000.00,
             bedrooms=5,
             bathrooms=4,
+            type="Villa",
             area_sqft=3500,
+            url='https://media.istockphoto.com/id/503044702/photo/illuminated-sky-and-outside-of-waterfront-buiding.jpg?s=612x612&w=0&k=20&c=xkDBkqmCVvhR4idfybXRb-yFS0KqOjqtikg_LtO4pzs=',
             status=PropertyStatus.AVAILABLE,
             landlord_id=landlord2.id
         )

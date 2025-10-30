@@ -105,6 +105,32 @@ def login():
   token = create_access_token(identity=user.id) 
   return jsonify({'message': 'Login successful','token': token,'user': user.to_dict()}), 200
 
+@app.route('/api/properties', methods=['POST'])
+def create_property():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No input data provided'}), 400
+    try:
+        prop = Property(
+            title=data['title'],
+            description=data.get('description', ''),
+            address=data.get('address'),
+            city=data['city'],
+            rent_amount=data['rent_amount'],
+            url = data.get('url', ''),
+            area_sqft = data.get('area_sqft', 0),
+            bedrooms=data.get('bedrooms', 1),
+            bathrooms=data.get('bathrooms', 1),
+            type=data.get('type'),
+            landlord_id=data['landlord_id']
+        )
+        db.session.add(prop)
+        db.session.commit()
+        return jsonify({'message': 'Property created', 'id': prop.id}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+
 def send_rent_reminders():
     """Background task to send rent payment reminders"""
     with app.app_context():
@@ -243,7 +269,7 @@ def get_properties():
 
     if not properties:
         return jsonify({'message': 'No properties found'}), 404
-    return jsonify({'sucesss': True, 'properties': [prop.to_dict(only=('title',"description", "rent_amount","address", "city","bedrooms","bathrooms","area_sqft", "status")) for prop in properties]})
+    return jsonify({'sucesss': True, 'properties': [prop.to_dict(only=('title',"description", "rent_amount","address","url", "city","bedrooms","bathrooms","type","area_sqft", "status")) for prop in properties]})
 
 @app.route('/api/properties/<int:property_id>', methods=['GET'])
 def get_property(property_id):
@@ -251,8 +277,7 @@ def get_property(property_id):
 
     if not p:
         return jsonify({'message': 'Property not found'}), 404
-    return jsonify({'sucesss': True, 'property': p.to_dict(only=('title',"description", "rent_amount","address", "city","bedrooms","bathrooms","area_sqft", "status"))})
-
+    return jsonify({'sucesss': True, 'property': p.to_dict(only=('title',"description", "rent_amount","address", "city","bedrooms","bathrooms","url","type","area_sqft", "status"))})
 
 # Booking endpoints
 @app.route('/api/bookings', methods=['POST'])
