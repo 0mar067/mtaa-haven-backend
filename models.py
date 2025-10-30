@@ -136,17 +136,6 @@ class Issue(db.Model):
     resolved_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-
-    reporter_id = db.Column(db.Integer,
-                            db.ForeignKey('users.id'),
-                            nullable=False)
-    property_id = db.Column(db.Integer,
-                            db.ForeignKey('properties.id'),
-                            nullable=False)
-    resolved_at = db.Column(db.DateTime)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 class Notification(db.Model):
     __tablename__ = 'notifications'
 
