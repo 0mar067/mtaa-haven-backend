@@ -5,12 +5,10 @@ import os
 import jwt
 from datetime import datetime, timedelta
 from functools import wraps
-from models import User
+from models import User, Property, Payment, Issue, Notification, Booking, PropertyImage
 from werkzeug.security import generate_password_hash, check_password_hash
 from database import db
-from models import User, Property, Payment, Issue, Notification
-from routes import api
-from models import User, Property, Payment, Issue, UserType, PropertyStatus, PaymentStatus, IssueStatus, IssueType, Booking, BookingStatus, NotificationType
+from models import UserType, PropertyStatus, PaymentStatus, IssueStatus, IssueType, BookingStatus, NotificationType
 from decimal import Decimal
 from flasgger import Swagger
 import schedule
@@ -21,7 +19,7 @@ from flask_cors import CORS
 import cloudinary
 from cloudinary.uploader import upload, destroy
 from cloudinary.utils import cloudinary_url
-from flask_jwt_extended import create_access_token, JWTManager  
+from flask_jwt_extended import create_access_token, JWTManager
 
 
 app = Flask(__name__)
@@ -65,8 +63,6 @@ CORS(app, resources={
         "supports_credentials": True
     }
 })
-# Register blueprints
-# app.register_blueprint(api, url_prefix='/api')
 
 @app.route('/api/register', methods=['POST'])
 def register():
@@ -262,14 +258,37 @@ def test():
     """
     return jsonify({'message': 'API is working'})
 
+@app.route('/api/test', methods=['POST'])
+def test_post():
+    try:
+        data = request.get_json()
+        if data is None or data == {}:
+            return jsonify({'error': 'No JSON data provided'}), 400
+        return jsonify({'received': data, 'message': 'Data received successfully'})
+    except Exception:
+        return jsonify({'error': 'Invalid JSON data'}), 400
+
 
 @app.route('/api/properties', methods=['GET'])
 def get_properties():
-    properties = Property.query.all()
-
-    if not properties:
-        return jsonify({'message': 'No properties found'}), 404
-    return jsonify({'sucesss': True, 'properties': [prop.to_dict(only=('title',"description", "rent_amount","address","url", "city","bedrooms","bathrooms","type","area_sqft", "status")) for prop in properties]})
+    try:
+        query = Property.query
+        location = request.args.get('location')
+        if location:
+            query = query.filter(Property.city.ilike(f'%{location}%'))
+        price_min = request.args.get('price_min')
+        if price_min:
+            query = query.filter(Property.rent_amount >= float(price_min))
+        price_max = request.args.get('price_max')
+        if price_max:
+            query = query.filter(Property.rent_amount <= float(price_max))
+        type_ = request.args.get('type')
+        if type_:
+            query = query.filter(Property.type == type_)
+        props = query.all()
+        return jsonify([{'id': p.id, 'title': p.title, 'description': p.description, 'rent': str(p.rent_amount), 'location': p.city, 'type': p.type} for p in props])
+    except Exception as e:
+        return jsonify({'error': 'Server error'}), 500
 
 @app.route('/api/properties/<int:property_id>', methods=['GET'])
 def get_property(property_id):
@@ -462,39 +481,165 @@ def get_payment_by_id(payment_id):
 def confirm_payment(payment_id):
     try:
         payment = Payment.query.get_or_404(payment_id)
-        
-        # Update payment status
         payment.status = PaymentStatus.COMPLETED
         payment.payment_date = datetime.utcnow()
-        
-        # Update property status if this is the first confirmed payment
-        property_obj = Property.query.get(payment.property_id)
-        if property_obj and property_obj.status == PropertyStatus.AVAILABLE:
-            property_obj.status = PropertyStatus.OCCUPIED
-            property_obj.tenant_id = payment.user_id
-        
-        # Update related booking status
-        booking = Booking.query.filter_by(
-            property_id=payment.property_id,
-            tenant_id=payment.user_id,
-            status=BookingStatus.PENDING
-        ).first()
-        
-        if booking:
-            booking.status = BookingStatus.CONFIRMED
-        
         db.session.commit()
-        
-        return jsonify({
-            'message': 'Payment confirmed and property status updated',
-            'payment_status': payment.status.value,
-            'property_status': property_obj.status.value if property_obj else None
-        })
-        
+        return jsonify({'message': 'Payment confirmed successfully'})
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Server error'}), 500
 
+@app.route('/api/payments/<int:id>', methods=['GET'])
+def get_payment(id):
+    try:
+        pay = Payment.query.get_or_404(id)
+        return jsonify({'id': pay.id, 'amount': str(pay.amount), 'status': pay.status.value, 'user_id': pay.user_id, 'property_id': pay.property_id})
+    except Exception as e:
+        return jsonify({'error': 'Payment not found'}), 404
+
+@app.route('/api/issues', methods=['POST'])
+def create_issue():
+    data = request.get_json()
+    if not data or not all(k in data for k in ['user_id', 'property_id', 'description']):
+        return jsonify({'error': 'Missing required fields'}), 400
+    try:
+        issue = Issue(
+            title=data.get('title', 'Issue'),
+            description=data['description'],
+            issue_type=IssueType(data.get('issue_type', 'MAINTENANCE')),
+            reporter_id=data['user_id'],
+            property_id=data['property_id']
+        )
+        db.session.add(issue)
+        db.session.commit()
+        return jsonify({'message': 'Issue created', 'id': issue.id}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/issues', methods=['GET'])
+def get_issues():
+    try:
+        issues = Issue.query.all()
+        return jsonify([{'id': i.id, 'description': i.description, 'status': i.status.value, 'user_id': i.reporter_id, 'property_id': i.property_id} for i in issues])
+    except Exception as e:
+        return jsonify({'error': 'Server error'}), 500
+
+@app.route('/api/users', methods=['GET'])
+def get_users():
+    try:
+        users = User.query.all()
+        return jsonify([{'id': u.id, 'name': f"{u.first_name} {u.last_name}", 'email': u.email, 'role': u.user_type.value} for u in users])
+    except Exception as e:
+        return jsonify({'error': 'Server error'}), 500
+
+@app.route('/api/properties/landlord/<int:landlord_id>', methods=['GET'])
+def get_landlord_properties(landlord_id):
+    try:
+        properties = Property.query.filter_by(landlord_id=landlord_id).all()
+        return jsonify({
+            'data': [{
+                'id': p.id,
+                'title': p.title,
+                'rent_amount': float(p.rent_amount),
+                'status': p.status.value,
+                'city': p.city,
+                'bedrooms': p.bedrooms,
+                'bathrooms': p.bathrooms
+            } for p in properties]
+        })
+    except Exception as e:
+        return jsonify({'error': 'Server error'}), 500
+
+@app.route('/api/bookings/landlord/<int:landlord_id>', methods=['GET'])
+def get_landlord_bookings(landlord_id):
+    try:
+        bookings = db.session.query(Booking).join(Property).filter(Property.landlord_id == landlord_id).all()
+        return jsonify({
+            'data': [{
+                'id': b.id,
+                'property_id': b.property_id,
+                'tenant_id': b.tenant_id,
+                'start_date': b.start_date.isoformat() if b.start_date else None,
+                'end_date': b.end_date.isoformat() if b.end_date else None,
+                'status': b.status.value
+            } for b in bookings]
+        })
+    except Exception as e:
+        return jsonify({'error': 'Server error'}), 500
+
+@app.route('/api/issues/landlord/<int:landlord_id>', methods=['GET'])
+def get_landlord_issues(landlord_id):
+    try:
+        issues = db.session.query(Issue).join(Property).filter(Property.landlord_id == landlord_id).all()
+        return jsonify({
+            'data': [{
+                'id': i.id,
+                'title': i.title,
+                'description': i.description,
+                'status': i.status.value,
+                'priority': i.priority,
+                'property_id': i.property_id,
+                'created_at': i.created_at.isoformat() if i.created_at else None
+            } for i in issues]
+        })
+    except Exception as e:
+        return jsonify({'error': 'Server error'}), 500
+
+@app.route('/api/issues/<int:issue_id>/resolve', methods=['PATCH'])
+def resolve_issue(issue_id):
+    try:
+        issue = Issue.query.get_or_404(issue_id)
+        issue.status = IssueStatus.RESOLVED
+        issue.resolved_at = datetime.utcnow()
+        db.session.commit()
+        return jsonify({'message': 'Issue resolved successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': 'Server error'}), 500
+
+@app.route('/api/notifications', methods=['POST'])
+def create_notification():
+    try:
+        data = request.get_json()
+        if not data or not all(k in data for k in ['title', 'message', 'user_id', 'property_id']):
+            return jsonify({'error': 'Missing required fields'}), 400
+
+        notification = Notification(
+            title=data['title'],
+            message=data['message'],
+            notification_type=NotificationType(data.get('type', 'GENERAL')),
+            user_id=data['user_id'],
+            property_id=data.get('property_id')
+        )
+        db.session.add(notification)
+        db.session.commit()
+
+        # Send email notification (mock - log instead of actual send)
+        recipient_email = data.get('email', 'tenant@example.com')
+        logging.info(f"Mock email sent to {recipient_email}: {notification.title} - {notification.message}")
+
+        return jsonify({
+            'message': 'Notification created and email sent (mock)',
+            'notification_id': notification.id
+        }), 201
+
+    except Exception:
+        db.session.rollback()
+        return jsonify({'error': 'An error occurred'}), 500
+
+@app.route('/api/notifications/<int:notification_id>', methods=['PUT'])
+def update_notification(notification_id):
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        # Mock update - in real app, query and update the notification
+        return jsonify({'message': f'Notification {notification_id} updated (mock)'}), 200
+
+    except Exception:
+        return jsonify({'error': 'An error occurred'}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
