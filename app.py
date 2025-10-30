@@ -1,4 +1,8 @@
+<<<<<<< HEAD
+from flask import Flask, jsonify, request
+=======
 from flask import Flask, request, jsonify
+>>>>>>> 21c80bbe34d50e5bc4d88a71d5f2bf35bccb5cf6
 from flask_migrate import Migrate
 from flask_mail import Mail, Message
 import os
@@ -8,7 +12,6 @@ from functools import wraps
 from models import User
 from werkzeug.security import generate_password_hash, check_password_hash
 from database import db
-from models import User, Property, Payment, Issue, Notification
 from routes import api
 from models import User, Property, Payment, Issue, UserType, PropertyStatus, PaymentStatus, IssueStatus, IssueType, Booking, BookingStatus, NotificationType
 from decimal import Decimal
@@ -205,6 +208,7 @@ def token_required(f):
     return decorated
 
 
+
 @app.route('/')
 def index():
     """
@@ -237,6 +241,17 @@ def test():
     return jsonify({'message': 'API is working'})
 
 
+
+@app.route('/api/test', methods=['POST'])
+def test_post():
+    try:
+        data = request.get_json()
+        if data is None or data == {}:
+            return jsonify({'error': 'No JSON data provided'}), 400
+        return jsonify({'received': data, 'message': 'Data received successfully'})
+    except Exception:
+        return jsonify({'error': 'Invalid JSON data'}), 400
+
 @app.route('/api/properties', methods=['GET'])
 def get_properties():
     properties = Property.query.all()
@@ -254,8 +269,8 @@ def get_property(property_id):
     return jsonify({'sucesss': True, 'property': p.to_dict(only=('title',"description", "rent_amount","address", "city","bedrooms","bathrooms","area_sqft", "status"))})
 
 
-    
-    
+
+
 
 if __name__ == '__main__':
     app.run(debug=True)
