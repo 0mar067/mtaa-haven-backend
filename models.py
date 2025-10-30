@@ -71,7 +71,10 @@ class User(db.Model, SerializerMixin):
     payments = db.relationship('Payment', backref='user', lazy=True)
     issues = db.relationship('Issue', backref='reporter', lazy=True)
 
+<<<<<<< Updated upstream
 
+=======
+>>>>>>> Stashed changes
 class Property(db.Model, SerializerMixin):
     __tablename__ = 'properties'
 
@@ -84,6 +87,7 @@ class Property(db.Model, SerializerMixin):
     bedrooms = db.Column(db.Integer, nullable=False)
     bathrooms = db.Column(db.Integer, nullable=False)
     area_sqft = db.Column(db.Integer)
+    url = db.Column(db.String(500))
     type = db.Column(db.String(50), nullable=True)  # e.g., "hostel", "airbnb", "apartment"
     status = db.Column(db.Enum(PropertyStatus), default=PropertyStatus.AVAILABLE)
     landlord_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
@@ -94,6 +98,7 @@ class Property(db.Model, SerializerMixin):
     # Relationships
     payments = db.relationship('Payment', backref='property', lazy=True)
     issues = db.relationship('Issue', backref='property', lazy=True)
+    serialize_rules = ('-password_hash',)
 
 
 class Payment(db.Model, SerializerMixin):

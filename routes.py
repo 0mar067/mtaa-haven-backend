@@ -1,15 +1,10 @@
 from flask import Blueprint, jsonify, request
 from database import db
+import logging
 from models import User, Property, Payment, Issue, UserType, IssueStatus, PaymentStatus
 from datetime import datetime
-import logging
-
 
 api = Blueprint('api', __name__)
-
-@api.route('/', methods=['GET'])
-def index():
-    return jsonify({"message": "Mtaa Haven API is running"}), 200
 
 @api.route('/test', methods=['GET'])
 def test():
@@ -24,6 +19,34 @@ def test_post():
         return jsonify({'received': data, 'message': 'Data received successfully'})
     except Exception:
         return jsonify({'error': 'Invalid JSON data'}), 400
+
+
+@api.route('/notifications', methods=['GET'])
+def get_notifications():
+    # Mock rent reminders - in a real app, this would query based on user and due dates
+    mock_notifications = [
+        {
+            'id': 1,
+            'title': 'Rent Due Reminder',
+            'message': 'Your rent payment of KES 25,000 is due on October 31st, 2025.',
+            'type': 'rent_reminder',
+            'is_read': False,
+            'created_at': '2025-10-24T06:00:00Z'
+        },
+        {
+            'id': 2,
+            'title': 'Payment Due Soon',
+            'message': 'Payment for Property: Downtown Apartment is due in 3 days.',
+            'type': 'payment_due',
+            'is_read': False,
+            'created_at': '2025-10-23T12:00:00Z'
+        }
+    ]
+    return jsonify(mock_notifications)
+
+@api.route('/', methods=['GET'])
+def index():
+    return jsonify({"message": "Mtaa Haven API is running"}), 200
 
 @api.route('/users', methods=['GET'])
 def get_users():
@@ -50,34 +73,71 @@ def create_user():
         )
         db.session.add(user)
         db.session.commit()
+
+        # Send email notification (mock - log instead of actual send)
+        recipient_email = data.get('email', 'tenant@example.com')
+        logging.info(f"Mock email sent to {recipient_email}: {notification.title} - {notification.message}")
+
+        # In a real implementation, uncomment the following:
+        # from app import mail
+        # msg = Message(notification.title,
+        #               sender=app.config['MAIL_DEFAULT_SENDER'],
+        #               recipients=[recipient_email])
+        # msg.body = notification.message
+        # mail.send(msg)
+
+        return jsonify({
+            'message': 'Notification created and email sent (mock)',
+            'notification_id': notification.id
+        }), 201
+
+    except Exception:
+        db.session.rollback()
+        return jsonify({'error': 'An error occurred'}), 500
+
+
+@api.route('/notifications/<int:notification_id>', methods=['PUT'])
+def update_notification(notification_id):
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        # Mock update - in real app, query and update the notification
+        return jsonify({'message': f'Notification {notification_id} updated (mock)'}), 200
+
+    except Exception:
+        return jsonify({'error': 'An error occurred'}), 500
         return jsonify({'message': 'User created', 'id': user.id}), 201
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 400
 
-@api.route('/properties', methods=['POST'])
-def create_property():
-    data = request.get_json()
-    if not data or not all(k in data for k in ['title', 'rent', 'location', 'landlord_id']):
-        return jsonify({'error': 'Missing required fields'}), 400
-    try:
-        prop = Property(
-            title=data['title'],
-            description=data.get('description', ''),
-            address=data.get('address', data['location']),
-            city=data['location'],
-            rent_amount=data['rent'],
-            bedrooms=data.get('bedrooms', 1),
-            bathrooms=data.get('bathrooms', 1),
-            type=data.get('type'),
-            landlord_id=data['landlord_id']
-        )
-        db.session.add(prop)
-        db.session.commit()
-        return jsonify({'message': 'Property created', 'id': prop.id}), 201
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 400
+# @api.route('/properties', methods=['POST'])
+# def create_property():
+#     data = request.get_json()
+#     if not data or not all(k in data for k in ['title', 'rent', 'location', 'landlord_id']):
+#         return jsonify({'error': 'Missing required fields'}), 400
+#     try:
+#         prop = Property(
+#             title=data['title'],
+#             description=data.get('description', ''),
+#             address=data.get('address', data['location']),
+#             city=data['location'],
+#             rent_amount=data['rent'],
+#             url = data.get('url', ''),
+#             area_sqft = data.get('area_sqft', 0),
+#             bedrooms=data.get('bedrooms', 1),
+#             bathrooms=data.get('bathrooms', 1),
+#             type=data.get('type'),
+#             landlord_id=data['landlord_id']
+#         )
+#         db.session.add(prop)
+#         db.session.commit()
+#         return jsonify({'message': 'Property created', 'id': prop.id}), 201
+#     except Exception as e:
+#         db.session.rollback()
+#         return jsonify({'error': str(e)}), 400
 
 @api.route('/properties', methods=['GET'])
 def get_properties():
