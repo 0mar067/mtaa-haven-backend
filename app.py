@@ -254,8 +254,222 @@ def get_property(property_id):
     return jsonify({'sucesss': True, 'property': p.to_dict(only=('title',"description", "rent_amount","address", "city","bedrooms","bathrooms","area_sqft", "status"))})
 
 
+# Booking endpoints
+@app.route('/api/bookings', methods=['POST'])
+def create_booking():
+    data = request.get_json()
     
+    if not data or not all(k in data for k in ['tenant_id', 'property_id', 'start_date', 'end_date']):
+        return jsonify({'error': 'Missing required fields'}), 400
     
+    try:
+        # Check if property exists and is available
+        property_obj = Property.query.get(data['property_id'])
+        if not property_obj:
+            return jsonify({'error': 'Property not found'}), 404
+        
+        if property_obj.status != PropertyStatus.AVAILABLE:
+            return jsonify({'error': 'Property is not available'}), 400
+        
+        # Check for duplicate bookings (overlapping dates)
+        start_date = datetime.fromisoformat(data['start_date'].replace('Z', '+00:00'))
+        end_date = datetime.fromisoformat(data['end_date'].replace('Z', '+00:00'))
+        
+        existing_booking = Booking.query.filter(
+            Booking.property_id == data['property_id'],
+            Booking.status.in_([BookingStatus.PENDING, BookingStatus.CONFIRMED]),
+            Booking.start_date < end_date,
+            Booking.end_date > start_date
+        ).first()
+        
+        if existing_booking:
+            return jsonify({'error': 'Property already booked for these dates'}), 400
+        
+        booking = Booking(
+            tenant_id=data['tenant_id'],
+            property_id=data['property_id'],
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        db.session.add(booking)
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Booking created successfully',
+            'booking_id': booking.id,
+            'booking': booking.to_dict()
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+
+
+@app.route('/api/bookings', methods=['GET'])
+def get_bookings():
+    user_id = request.args.get('user_id')
+    user_type = request.args.get('user_type')
+    
+    try:
+        if user_type == 'tenant':
+            bookings = Booking.query.filter_by(tenant_id=user_id).all()
+        elif user_type == 'landlord':
+            bookings = db.session.query(Booking).join(Property).filter(Property.landlord_id == user_id).all()
+        else:
+            bookings = Booking.query.all()
+        
+        return jsonify({
+            'success': True,
+            'bookings': [booking.to_dict() for booking in bookings]
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# Payment endpoints
+@app.route('/api/payments', methods=['POST'])
+def create_payment():
+    data = request.get_json()
+    
+    if not data or not all(k in data for k in ['user_id', 'property_id', 'amount', 'due_date']):
+        return jsonify({'error': 'Missing required fields'}), 400
+    
+    try:
+        # Verify property and user exist
+        property_obj = Property.query.get(data['property_id'])
+        user = User.query.get(data['user_id'])
+        
+        if not property_obj or not user:
+            return jsonify({'error': 'Property or user not found'}), 404
+        
+        due_date = datetime.fromisoformat(data['due_date'].replace('Z', '+00:00'))
+        
+        payment = Payment(
+            user_id=data['user_id'],
+            property_id=data['property_id'],
+            amount=Decimal(str(data['amount'])),
+            due_date=due_date,
+            payment_method=data.get('payment_method'),
+            notes=data.get('notes')
+        )
+        
+        db.session.add(payment)
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Payment created successfully',
+            'payment_id': payment.id,
+            'payment': {
+                'id': payment.id,
+                'amount': str(payment.amount),
+                'status': payment.status.value,
+                'due_date': payment.due_date.isoformat(),
+                'user_id': payment.user_id,
+                'property_id': payment.property_id
+            }
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+
+
+@app.route('/api/payments', methods=['GET'])
+def get_payments():
+    user_id = request.args.get('user_id')
+    user_type = request.args.get('user_type')
+    
+    try:
+        if user_type == 'tenant':
+            payments = Payment.query.filter_by(user_id=user_id).all()
+        elif user_type == 'landlord':
+            payments = db.session.query(Payment).join(Property).filter(Property.landlord_id == user_id).all()
+        else:
+            payments = Payment.query.all()
+        
+        return jsonify({
+            'success': True,
+            'payments': [{
+                'id': p.id,
+                'amount': str(p.amount),
+                'status': p.status.value,
+                'due_date': p.due_date.isoformat() if p.due_date else None,
+                'payment_date': p.payment_date.isoformat() if p.payment_date else None,
+                'user_id': p.user_id,
+                'property_id': p.property_id,
+                'payment_method': p.payment_method,
+                'notes': p.notes
+            } for p in payments]
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/payments/<int:payment_id>', methods=['GET'])
+def get_payment_by_id(payment_id):
+    try:
+        payment = Payment.query.get_or_404(payment_id)
+        
+        return jsonify({
+            'success': True,
+            'payment': {
+                'id': payment.id,
+                'amount': str(payment.amount),
+                'status': payment.status.value,
+                'due_date': payment.due_date.isoformat() if payment.due_date else None,
+                'payment_date': payment.payment_date.isoformat() if payment.payment_date else None,
+                'user_id': payment.user_id,
+                'property_id': payment.property_id,
+                'payment_method': payment.payment_method,
+                'transaction_id': payment.transaction_id,
+                'notes': payment.notes
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({'error': 'Payment not found'}), 404
+
+
+@app.route('/api/payments/<int:payment_id>/confirm', methods=['PATCH'])
+def confirm_payment(payment_id):
+    try:
+        payment = Payment.query.get_or_404(payment_id)
+        
+        # Update payment status
+        payment.status = PaymentStatus.COMPLETED
+        payment.payment_date = datetime.utcnow()
+        
+        # Update property status if this is the first confirmed payment
+        property_obj = Property.query.get(payment.property_id)
+        if property_obj and property_obj.status == PropertyStatus.AVAILABLE:
+            property_obj.status = PropertyStatus.OCCUPIED
+            property_obj.tenant_id = payment.user_id
+        
+        # Update related booking status
+        booking = Booking.query.filter_by(
+            property_id=payment.property_id,
+            tenant_id=payment.user_id,
+            status=BookingStatus.PENDING
+        ).first()
+        
+        if booking:
+            booking.status = BookingStatus.CONFIRMED
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Payment confirmed and property status updated',
+            'payment_status': payment.status.value,
+            'property_status': property_obj.status.value if property_obj else None
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True)

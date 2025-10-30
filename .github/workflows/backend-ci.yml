@@ -7,36 +7,24 @@ on:
     branches: [main]
 
 jobs:
-  build-test-deploy:
+  build:
     runs-on: ubuntu-latest
-
     steps:
-      # Step 1: Checkout your repo
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      # Step 2: Set up Python
+      - uses: actions/checkout@v3
+      
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
-      # Step 3: Install dependencies
+      - name: Install pipenv
+        run: pip install pipenv
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      
-      # Step 4: Export requirements.txt from Pipfile.lock and commit if changed
-      - name: Export requirements.txt from Pipfile.lock
+      - name: Export requirements.txt
         run: pipenv requirements > requirements.txt
-
-      - name: Commit requirements.txt changes
-        uses: stefanzweifel/git-auto-commit-action@v4
-        with:
-          commit_message: "Sync requirements.txt with Pipfile.lock"
-          file_pattern: requirements.txt
 
 
       # Step 5: Verify Flask app
