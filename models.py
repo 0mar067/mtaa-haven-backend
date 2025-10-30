@@ -96,7 +96,7 @@ class Property(db.Model, SerializerMixin):
     issues = db.relationship('Issue', backref='property', lazy=True)
 
 
-class Payment(db.Model):
+class Payment(db.Model, SerializerMixin):
     __tablename__ = 'payments'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -115,6 +115,8 @@ class Payment(db.Model):
                             nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    serialize_rules = ('-user.password_hash', '-property.payments')
 
 
 class Issue(db.Model):
@@ -175,6 +177,10 @@ class Booking(db.Model, SerializerMixin):
     # Relationships
     tenant = db.relationship('User', backref='bookings', lazy=True)
     property = db.relationship('Property', backref='bookings', lazy=True)
+    payments = db.relationship('Payment', 
+                              primaryjoin='and_(Booking.tenant_id==Payment.user_id, Booking.property_id==Payment.property_id)',
+                              foreign_keys='[Payment.user_id, Payment.property_id]',
+                              viewonly=True)
 
 
 class PropertyImage(db.Model, SerializerMixin):
