@@ -281,6 +281,7 @@ def get_property(property_id):
 
 
 
+
 # Booking endpoints
 @app.route('/api/bookings', methods=['POST'])
 def create_booking():

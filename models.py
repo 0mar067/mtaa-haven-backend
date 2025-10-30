@@ -72,7 +72,10 @@ class User(db.Model, SerializerMixin):
     issues = db.relationship('Issue', backref='reporter', lazy=True)
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
 class Property(db.Model, SerializerMixin):
