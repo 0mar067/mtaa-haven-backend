@@ -13,8 +13,12 @@ sqlalchemy-serializer = "*"
 flask-mail = "*"
 flasgger = "*"
 flask-jwt-extended = "*"
+flask-cors = "*"
 
 [dev-packages]
 
 [requires]
 python_version = "3.8"
+
+[scripts]
+export-req = "bash -c 'pipenv requirements > requirements.txt'"
