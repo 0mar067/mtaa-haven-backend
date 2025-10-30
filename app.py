@@ -279,9 +279,6 @@ def get_property(property_id):
         return jsonify({'message': 'Property not found'}), 404
     return jsonify({'sucesss': True, 'property': p.to_dict(only=('title',"description", "rent_amount","address", "city","bedrooms","bathrooms","url","type","area_sqft", "status"))})
 
-
-
-
 # Booking endpoints
 @app.route('/api/bookings', methods=['POST'])
 def create_booking():
