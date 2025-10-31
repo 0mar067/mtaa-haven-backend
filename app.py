@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Blueprint
 from flask_migrate import Migrate
 from flask_mail import Mail, Message
 import os
@@ -19,7 +19,7 @@ from flask_cors import CORS
 import cloudinary
 from cloudinary.uploader import upload, destroy
 from cloudinary.utils import cloudinary_url
-from flask_jwt_extended import create_access_token, JWTManager
+from flask_jwt_extended import create_access_token, JWTManager, jwt_required, get_jwt_identity
 
 
 app = Flask(__name__)
@@ -57,12 +57,17 @@ swagger = Swagger(app)
 
 CORS(app, resources={
     r"/*": {
-        "origins": ["http://localhost:5174", "http://localhost:5173"],
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "origins": ["http://localhost:5174", "http://localhost:5173", "http://127.0.0.1:5173"],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
         "allow_headers": ["Content-Type", "Authorization"],
         "supports_credentials": True
     }
 })
+@app.route('/api/users', methods=['GET'])
+def get_users():    
+    users = User.query.all()
+    return jsonify({'success': True, 'users': [u.to_dict(only=('id', 'first_name', 'last_name', 'email', 'phone', 'user_type')) for u in users]})
+
 
 @app.route('/api/register', methods=['POST'])
 def register():
@@ -99,7 +104,7 @@ def login():
     return jsonify({'error': 'Invalid email or password'}), 401
   
   token = create_access_token(identity=user.id) 
-  return jsonify({'message': 'Login successful','token': token,'user': user.to_dict()}), 200
+  return jsonify({'message': 'Login successful','token': token,'user': user.to_dict(only=("first_name","last_name","id","email","phone","user_type"))}), 200
 
 @app.route('/api/properties', methods=['POST'])
 def create_property():
@@ -126,6 +131,19 @@ def create_property():
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 400
+
+@app.route('/api/properties', methods=['GET'])
+def get_properties():
+    properties = Property.query.all()
+    return jsonify({'success': True, 'properties': [p.to_dict(only=('title',"description","id", "rent_amount","address", "city","bedrooms","bathrooms","url","type","area_sqft", "status")) for p in properties]})
+
+@app.route('/api/properties/<int:property_id>', methods=['GET'])
+def get_property(property_id):
+    p = Property.query.get(property_id)
+
+    if not p:
+        return jsonify({'message': 'Property not found'}), 404
+    return jsonify({'sucesss': True, 'property': p.to_dict(only=('title',"description","id", "rent_amount","address", "city","bedrooms","bathrooms","url","type","area_sqft", "status"))})
 
 def send_rent_reminders():
     """Background task to send rent payment reminders"""
@@ -226,78 +244,6 @@ def token_required(f):
         return f(current_user, *args, **kwargs)
     return decorated
 
-
-@app.route('/')
-def index():
-    """
-    Root endpoint to check if the backend is working.
-    ---
-    responses:
-      200:
-        description: Backend is working
-        schema:
-          type: string
-    """
-    return "Backend is working!"
-
-
-@app.route('/api/test', methods=['GET'])
-def test():
-    """
-    Test endpoint for API functionality.
-    ---
-    responses:
-      200:
-        description: API is working
-        schema:
-          type: object
-          properties:
-            message:
-              type: string
-              example: "API is working"
-    """
-    return jsonify({'message': 'API is working'})
-
-@app.route('/api/test', methods=['POST'])
-def test_post():
-    try:
-        data = request.get_json()
-        if data is None or data == {}:
-            return jsonify({'error': 'No JSON data provided'}), 400
-        return jsonify({'received': data, 'message': 'Data received successfully'})
-    except Exception:
-        return jsonify({'error': 'Invalid JSON data'}), 400
-
-
-@app.route('/api/properties', methods=['GET'])
-def get_properties():
-    try:
-        query = Property.query
-        location = request.args.get('location')
-        if location:
-            query = query.filter(Property.city.ilike(f'%{location}%'))
-        price_min = request.args.get('price_min')
-        if price_min:
-            query = query.filter(Property.rent_amount >= float(price_min))
-        price_max = request.args.get('price_max')
-        if price_max:
-            query = query.filter(Property.rent_amount <= float(price_max))
-        type_ = request.args.get('type')
-        if type_:
-            query = query.filter(Property.type == type_)
-        props = query.all()
-        return jsonify([{'id': p.id, 'title': p.title, 'description': p.description, 'rent': str(p.rent_amount), 'location': p.city, 'type': p.type} for p in props])
-    except Exception as e:
-        return jsonify({'error': 'Server error'}), 500
-
-@app.route('/api/properties/<int:property_id>', methods=['GET'])
-def get_property(property_id):
-    p = Property.query.get(property_id)
-
-    if not p:
-        return jsonify({'message': 'Property not found'}), 404
-    return jsonify({'sucesss': True, 'property': p.to_dict(only=('title',"description", "rent_amount","address", "city","bedrooms","bathrooms","url","type","area_sqft", "status"))})
-
 # Booking endpoints
 @app.route('/api/bookings', methods=['POST'])
 def create_booking():
@@ -333,7 +279,8 @@ def create_booking():
             tenant_id=data['tenant_id'],
             property_id=data['property_id'],
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            special_requests=data.get('special_requests', '')
         )
         
         db.session.add(booking)
@@ -342,7 +289,16 @@ def create_booking():
         return jsonify({
             'message': 'Booking created successfully',
             'booking_id': booking.id,
-            'booking': booking.to_dict()
+            'booking': {
+                'id': booking.id,
+                'tenant_id': booking.tenant_id,
+                'property_id': booking.property_id,
+                'start_date': booking.start_date.isoformat(),
+                'end_date': booking.end_date.isoformat(),
+                'status': booking.status.value,
+                'special_requests': booking.special_requests,
+                'created_at': booking.created_at.isoformat()
+            }
         }), 201
         
     except Exception as e:
@@ -365,12 +321,20 @@ def get_bookings():
         
         return jsonify({
             'success': True,
-            'bookings': [booking.to_dict() for booking in bookings]
+            'bookings': [{
+                'id': b.id,
+                'tenant_id': b.tenant_id,
+                'property_id': b.property_id,
+                'start_date': b.start_date.isoformat(),
+                'end_date': b.end_date.isoformat(),
+                'status': b.status.value,
+                'special_requests': b.special_requests,
+                'created_at': b.created_at.isoformat()
+            } for b in bookings]
         })
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
 
 # Payment endpoints
 @app.route('/api/payments', methods=['POST'])
@@ -525,14 +489,6 @@ def get_issues():
     except Exception as e:
         return jsonify({'error': 'Server error'}), 500
 
-@app.route('/api/users', methods=['GET'])
-def get_users():
-    try:
-        users = User.query.all()
-        return jsonify([{'id': u.id, 'name': f"{u.first_name} {u.last_name}", 'email': u.email, 'role': u.user_type.value} for u in users])
-    except Exception as e:
-        return jsonify({'error': 'Server error'}), 500
-
 @app.route('/api/properties/landlord/<int:landlord_id>', methods=['GET'])
 def get_landlord_properties(landlord_id):
     try:
@@ -555,6 +511,7 @@ def get_landlord_properties(landlord_id):
 def get_landlord_bookings(landlord_id):
     try:
         bookings = db.session.query(Booking).join(Property).filter(Property.landlord_id == landlord_id).all()
+        print(bookings)
         return jsonify({
             'data': [{
                 'id': b.id,

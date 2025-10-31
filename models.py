@@ -70,8 +70,7 @@ class User(db.Model, SerializerMixin):
                                         lazy=True)
     payments = db.relationship('Payment', backref='user', lazy=True)
     issues = db.relationship('Issue', backref='reporter', lazy=True)
-
-
+    
 
 class Property(db.Model, SerializerMixin):
     __tablename__ = 'properties'
@@ -89,7 +88,7 @@ class Property(db.Model, SerializerMixin):
     type = db.Column(db.String(50), nullable=True)  # e.g., "hostel", "airbnb", "apartment"
     status = db.Column(db.Enum(PropertyStatus), default=PropertyStatus.AVAILABLE)
     landlord_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    tenant_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -122,7 +121,7 @@ class Payment(db.Model, SerializerMixin):
     serialize_rules = ('-user.password_hash', '-property.payments')
 
 
-class Issue(db.Model):
+class Issue(db.Model, SerializerMixin):
     __tablename__ = 'issues'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -136,7 +135,18 @@ class Issue(db.Model):
     resolved_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-class Notification(db.Model):
+
+
+    reporter_id = db.Column(db.Integer,
+                            db.ForeignKey('users.id'),
+                            nullable=False)
+    property_id = db.Column(db.Integer,
+                            db.ForeignKey('properties.id'),
+                            nullable=False)
+    resolved_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+class Notification(db.Model, SerializerMixin):
     __tablename__ = 'notifications'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -165,6 +175,7 @@ class Booking(db.Model, SerializerMixin):
     status = db.Column(db.Enum(BookingStatus), default=BookingStatus.PENDING)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    special_requests = db.Column(db.Text)   
 
     # Relationships
     tenant = db.relationship('User', backref='bookings', lazy=True)
@@ -173,7 +184,13 @@ class Booking(db.Model, SerializerMixin):
                               primaryjoin='and_(Booking.tenant_id==Payment.user_id, Booking.property_id==Payment.property_id)',
                               foreign_keys='[Payment.user_id, Payment.property_id]',
                               viewonly=True)
-
+    serialize_rules = (
+        # exclude back-references that cause recursion
+        ('-tenant.bookings',),
+        ('-property.bookings',),
+        ('-payments.booking',),
+    )
+    
 
 class PropertyImage(db.Model, SerializerMixin):
     __tablename__ = 'property_images'
